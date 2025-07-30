@@ -13,7 +13,7 @@ import CoreLocation
     private var videoRecorder: VideoRecorder?
     private var recordingCompletion: ((String, String?, Error?) -> Void)?
     private var recordingTimer: Timer?
-     private let sessionQueue = DispatchQueue(label: "dual.camera.session.queue", qos: .userInitiated)
+    private let sessionQueue = DispatchQueue(label: "dual.camera.session.queue", qos: .userInitiated)
     private let stateLock = NSLock()
     private var _isSessionEnabled = false
     private var _isRecording = false
@@ -25,19 +25,8 @@ import CoreLocation
         self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
     }
 
-    @objc(initVideoCallback:)
-    func initVideoCallback(_ command: CDVInvokedUrlCommand) {
-        self.videoCallbackContext = command
-        let data: [String: Any] = ["videoCallbackInitialized": true]
-        
-        let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: data)
-        pluginResult?.setKeepCallbackAs(true)
-        self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
-    }
-
     @objc(enableDualMode:)
     func enableDualMode(_ command: CDVInvokedUrlCommand) {
-
         if isSessionEnabled {
             let pluginResult = CDVPluginResult(status: .error, messageAs: "Dual mode already enabled")
             self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
@@ -46,7 +35,6 @@ import CoreLocation
 
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
-            
 
             guard !self.isSessionEnabled else {
                 DispatchQueue.main.async {
@@ -124,7 +112,6 @@ import CoreLocation
             if let sessionManager = self.sessionManager,
                sessionManager.isReady() {
                 sessionManager.stopSession()
-                // Ensure video mixer orientation is unlocked
                 sessionManager.videoMixer.unlockOrientation()
             }
 
@@ -419,6 +406,16 @@ import CoreLocation
         UIGraphicsEndImageContext()
 
         return merged ?? background
+    }
+
+    @objc(initVideoCallback:)
+    func initVideoCallback(_ command: CDVInvokedUrlCommand) {
+        self.videoCallbackContext = command
+        let data: [String: Any] = ["videoCallbackInitialized": true]
+        
+        let pluginResult = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: data)
+        pluginResult?.setKeepCallbackAs(true)
+        self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
     }
     
     @objc(startVideoCaptureDual:)
