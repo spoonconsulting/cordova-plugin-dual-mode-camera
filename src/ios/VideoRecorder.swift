@@ -39,11 +39,8 @@ class VideoRecorder {
                 let fileName = UUID().uuidString + ".mov"
                 self.outputURL = outputDirectory.appendingPathComponent(fileName)
                 self.assetWriter = try AVAssetWriter(outputURL: self.outputURL!, fileType: .mov)
-                
-                // Use provided orientation or fall back to current device orientation
                 let orientationToUse = recordingOrientation ?? UIDevice.current.orientation
                 
-                // Ensure we use a valid orientation for recording
                 let validOrientation: UIDeviceOrientation
                 switch orientationToUse {
                 case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
@@ -231,6 +228,7 @@ class VideoRecorder {
             defer { stateLock.unlock() }
             return _isWriting
         }
+
         set {
             stateLock.lock()
             defer { stateLock.unlock() }

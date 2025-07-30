@@ -41,7 +41,6 @@ class DualCameraRenderController {
     }
 
     @objc private func orientationChanged() {
-        // Don't change preview orientation while recording
         if let dualCameraPreview = dualCameraPreview, dualCameraPreview.isCurrentlyRecording {
             return
         }
@@ -83,7 +82,6 @@ class DualCameraRenderController {
     }
     
     private func updateFrontCameraOrientation() {
-        // Don't change camera orientation while recording
         if let dualCameraPreview = dualCameraPreview, dualCameraPreview.isCurrentlyRecording {
             return
         }

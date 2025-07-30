@@ -46,6 +46,7 @@ class VideoMixer {
         if outputPixelBufferPool == nil {
             return
         }
+
         inputFormatDescription = videoFormatDescription
         
         guard let metalDevice = metalDevice else {
@@ -73,7 +74,6 @@ class VideoMixer {
     
     func lockOrientation() {
         let currentOrientation = UIDevice.current.orientation
-        
         switch currentOrientation {
         case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
             lockedOrientation = currentOrientation
@@ -83,7 +83,7 @@ class VideoMixer {
             lockedOrientation = .portrait
         }
     }
-    
+
     func unlockOrientation() {
         lockedOrientation = nil
     }
@@ -106,7 +106,7 @@ class VideoMixer {
             print("Allocation failure: Could not get pixel buffer from pool (\(self.description))")
             return nil
         }
-        
+
         guard let outputTexture = makeTextureFromCVPixelBuffer(pixelBuffer: outputPixelBuffer),
             let fullScreenTexture = makeTextureFromCVPixelBuffer(pixelBuffer: fullScreenPixelBuffer),
             let pipTexture = makeTextureFromCVPixelBuffer(pixelBuffer: pipPixelBuffer) else {
