@@ -1,6 +1,6 @@
 {
-  "name": "cordova-plugin-dual-mode",
-  "version": "1.0.0",
+  "name": "@spoonconsulting/cordova-plugin-dual-mode-camera",
+  "version": "1.0.1",
   "description": "A plugin with dual mode functionality allowing users to use both front and back camera at the same time and capture images",
   "keywords": [
     "cordova",
@@ -15,8 +15,12 @@
   },
   "author": "Jatin Purmessur & Spoon Consulting Ltd",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera"
+  },
   "cordova": {
-    "id": "cordova-plugin-dual-mode",
+    "id": "@spoonconsulting/cordova-plugin-dual-mode-camera",
     "platforms": [
       "android",
       "ios"

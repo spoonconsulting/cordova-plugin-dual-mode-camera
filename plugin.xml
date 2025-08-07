@@ -1,66 +1,56 @@
-
-
 <?xml version="1.0" encoding="UTF-8"?>
-<plugin
-   xmlns="http://apache.org/cordova/ns/plugins/1.0" 
-   xmlns:android="http://schemas.android.com/apk/res/android"
-    id="cordova-plugin-dual-mode"
-    version="1.0.0">
 
-    <name>Dual Mode Plugin</name>
+<plugin id="@spoonconsulting/cordova-plugin-dual-mode-camera" version="1.0.1" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <name>cordova-plugin-dual-mode</name>
+    <description>Cordova plugin that allows users to use both front and back camera at the same time</description>
     <license>Apache 2.0</license>
+    <keywords>cordova, camera, dual-camera, front-camera, back-camera, video, media, plugin, ios, android, picture-in-picture, simultaneous-camera, multi-camera</keywords>
+    <repo>https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera.git</repo>
+    <issue>https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/issues</issue>
 
-    <js-module src="www/dual-mode-plugin.js" name="DualModePlugin">
-        <clobbers target="dualCameraPreview"/>
+    <js-module src="www/DualCameraPreview.js" name="DualCameraPreview">
+    <clobbers target="DualCameraPreview" />
     </js-module>
 
     <platform name="android">
-        <config-file target="config.xml" parent="/*">
-            <feature name="DualModePlugin">
-                <param name="android-package" value="com.spoon.dualmode.DualModePlugin" />
-                 <param name="onload" value="true" />
-            </feature>
-        </config-file>
-        <config-file target="AndroidManifest.xml" parent="/manifest">
-            <uses-feature android:name="android.hardware.camera" android:required="true"/>
-            <uses-feature android:name="android.hardware.camera.autofocus" />
-            <uses-permission android:name="android.permission.CAMERA" />
-            <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-        </config-file>
-        <config-file target="res/values/strings.xml" parent="/*">
-            <string name="camera_error">This device does not support Camera2 API</string>
-        </config-file>
-        <source-file src="src/android/dual-mode-plugin.java" target-dir="src/com/dualmode/dualmodeplugin" />
+
     </platform>
 
     <platform name="ios">
-        <config-file target="config.xml" parent="/*">
-           <feature name="DualCameraPreview">
-                <param name="ios-package" value="DualCameraPreview" />
-            </feature>
+    <config-file target="config.xml" parent="/*">
+        <feature name="DualCameraPreview">
+            <param name="ios-package" value="DualCameraPreview" onload="true" />
+        </feature>
         </config-file>
 
         <config-file target="*-Info.plist" parent="NSCameraUsageDescription">
-            <string>This App requires camera access to let you take the pictures that you would like to upload.</string>
+        <string>This App requires camera access to let you take the pictures that you would like to upload.</string>
         </config-file>
 
         <config-file target="*-Info.plist" parent="NSLocationWhenInUseUsageDescription">
-            <string>This App requires access to your location to add GPS exif to captured images.</string>
-        </config-file>
+        <string>This App requires access to your location to add GPS exif to captured images.</string>
+    </config-file>
 
-        <framework src="AVFoundation.framework" />
-        <framework src="UIKit.framework" />
-        <framework src="ImageIO.framework" weak="true" />
-        <framework src="MobileCoreServices.framework" />
-        <framework src="CoreLocation.framework" />
-        <framework src="CoreGraphics.framework" />
-        <framework src="AssetsLibrary.framework" />
-        <framework src="CoreGraphics.framework" />
-        <framework src="CoreImage.framework" />
-        <framework src="OpenGLES.framework" />
-        <framework src="GLKit.framework" />
-        <framework src="CoreVideo.framework" />
-        <framework src="QuartzCore.framework"/>
-    </platform>
+    <source-file src="src/ios/VideoMixerShader.metal" />
+    <source-file src="src/ios/DualCameraPreview.swift" />
+    <source-file src="src/ios/DualCameraSessionManager.swift" />
+    <source-file src="src/ios/DualCameraRenderController.swift" />
+    <source-file src="src/ios/VideoRecorder.swift" />
+    <source-file src="src/ios/VideoMixer.swift" />
+
+    <framework src="ImageIO.framework" weak="true" />
+    <framework src="MobileCoreServices.framework" />
+    <framework src="CoreLocation.framework" />
+    <framework src="CoreGraphics.framework" />
+    <framework src="AssetsLibrary.framework" />
+    <framework src="CoreGraphics.framework" />
+    <framework src="CoreImage.framework" />
+    <framework src="OpenGLES.framework" />
+    <framework src="GLKit.framework" />
+    <framework src="CoreVideo.framework" />
+    <framework src="QuartzCore.framework"/>
+  </platform>
+
 </plugin>
 

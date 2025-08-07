@@ -1,0 +1,156 @@
+import UIKit
+import AVFoundation
+
+class DualCameraRenderController {
+    private var backPreviewLayer: AVCaptureVideoPreviewLayer?
+    private var frontPreviewLayer: AVCaptureVideoPreviewLayer?
+    private var pipView: UIView?
+    private var containerView: UIView?
+    private var session: AVCaptureMultiCamSession?
+    private var sessionManager: DualCameraSessionManager?
+    private weak var dualCameraPreview: DualCameraPreview?
+
+    func setupPreview(on view: UIView, session: AVCaptureMultiCamSession, sessionManager: DualCameraSessionManager, dualCameraPreview: DualCameraPreview) {
+        self.containerView = view
+        self.session = session
+        self.sessionManager = sessionManager
+        self.dualCameraPreview = dualCameraPreview
+        setupBackPreviewLayer(on: view, session: session)
+        setupPiPView(on: view)
+        setupFrontPreviewLayer(session: session)
+        updatePreviewForCurrentOrientation()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(orientationChanged),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
+    }
+
+    func teardownPreview() {
+        NotificationCenter.default.removeObserver(self)
+        
+        backPreviewLayer?.removeFromSuperlayer()
+        backPreviewLayer = nil
+        frontPreviewLayer?.removeFromSuperlayer()
+        frontPreviewLayer = nil
+        pipView?.removeFromSuperview()
+        pipView = nil
+        containerView = nil
+        session = nil
+    }
+
+    @objc private func orientationChanged() {
+        if let dualCameraPreview = dualCameraPreview, dualCameraPreview.isCurrentlyRecording {
+            return
+        }
+        
+        guard let containerView = containerView else { return }
+        
+        DispatchQueue.main.async {
+            self.updatePreviewForCurrentOrientation()
+        }
+    }
+    
+    private func updatePreviewForCurrentOrientation() {
+        guard let containerView = containerView,
+              let pipView = pipView,
+              let frontPreviewLayer = frontPreviewLayer else { return }
+        
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
+        pipView.frame = CGRect(x: 16, y: 60, width: 160, height: 240)
+        
+        if isLandscape {
+            pipView.frame = CGRect(x: 20, y: 15, width: 240, height: 160)
+        }
+        
+        frontPreviewLayer.frame = pipView.bounds
+        backPreviewLayer?.frame = containerView.bounds
+        updateFrontCameraOrientation()
+    }
+    
+    private func updateFrontCameraOrientation() {
+        if let dualCameraPreview = dualCameraPreview, dualCameraPreview.isCurrentlyRecording {
+            return
+        }
+        
+        guard let session = session else { return }
+        
+        let orientation = UIDevice.current.orientation
+        let videoOrientation: AVCaptureVideoOrientation
+        
+        switch orientation {
+        case .portrait:
+            videoOrientation = .portrait
+        case .portraitUpsideDown:
+            videoOrientation = .portraitUpsideDown
+        case .landscapeLeft:
+            videoOrientation = .landscapeRight
+        case .landscapeRight:
+            videoOrientation = .landscapeLeft
+        default:
+            videoOrientation = .portrait
+        }
+        
+        sessionManager?.updateVideoOrientation(videoOrientation)
+        if let frontConnection = frontPreviewLayer?.connection {
+            if frontConnection.isVideoOrientationSupported {
+                frontConnection.videoOrientation = videoOrientation
+            }
+        }
+        
+        if let backConnection = backPreviewLayer?.connection {
+            if backConnection.isVideoOrientationSupported {
+                backConnection.videoOrientation = videoOrientation
+            }
+        }
+    }
+
+    private func setupBackPreviewLayer(on view: UIView, session: AVCaptureMultiCamSession) {
+        backPreviewLayer = AVCaptureVideoPreviewLayer(session: session)
+        backPreviewLayer?.videoGravity = .resizeAspectFill
+        backPreviewLayer?.frame = view.bounds
+
+        if let backLayer = backPreviewLayer {
+            if let webViewLayer = view.subviews.first(where: { $0 is WKWebView || $0 is UIWebView })?.layer {
+                view.layer.insertSublayer(backLayer, below: webViewLayer)
+            } else {
+                view.layer.insertSublayer(backLayer, at: 0)
+            }
+        }
+    }
+
+    private func setupPiPView(on view: UIView) {
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
+        
+        let pipView = UIView(frame: CGRect(x: 16, y: 60, width: 160, height: 240))
+        if isLandscape {
+            let pipView = UIView(frame: CGRect(x: 16, y: 60, width: 240, height: 160))
+        }
+        
+        self.pipView = pipView
+        pipView.layer.cornerRadius = 12
+        pipView.clipsToBounds = true
+        pipView.backgroundColor = .black
+
+        if let webView = view.subviews.first(where: { $0 is WKWebView || $0 is UIWebView }) {
+            view.insertSubview(pipView, belowSubview: webView)
+        } else {
+            view.addSubview(pipView)
+        }
+    }
+
+    private func setupFrontPreviewLayer(session: AVCaptureMultiCamSession) {
+        guard let pipView = self.pipView else { return }
+
+        frontPreviewLayer = AVCaptureVideoPreviewLayer(session: session)
+        frontPreviewLayer?.videoGravity = .resizeAspectFill
+        frontPreviewLayer?.frame = pipView.bounds
+
+        if let frontLayer = frontPreviewLayer {
+            pipView.layer.addSublayer(frontLayer)
+        }
+    }
+}
