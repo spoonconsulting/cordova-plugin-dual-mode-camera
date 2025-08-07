@@ -59,21 +59,10 @@ class DualCameraRenderController {
         
         let orientation = UIDevice.current.orientation
         let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
+        pipView.frame = CGRect(x: 16, y: 60, width: 160, height: 240)
         
         if isLandscape {
-            let pipWidth: CGFloat = 240
-            let pipHeight: CGFloat = 160
-            let pipX: CGFloat = 20
-            let pipY: CGFloat = 15
-            
-            pipView.frame = CGRect(x: pipX, y: pipY, width: pipWidth, height: pipHeight)
-        } else {
-            let pipWidth: CGFloat = 160
-            let pipHeight: CGFloat = 240
-            let pipX: CGFloat = 16
-            let pipY: CGFloat = 60
-            
-            pipView.frame = CGRect(x: pipX, y: pipY, width: pipWidth, height: pipHeight)
+            pipView.frame = CGRect(x: 20, y: 15, width: 240, height: 160)
         }
         
         frontPreviewLayer.frame = pipView.bounds
@@ -136,20 +125,11 @@ class DualCameraRenderController {
         let orientation = UIDevice.current.orientation
         let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
         
-        let pipWidth: CGFloat
-        let pipHeight: CGFloat
-        let pipX: CGFloat = 16
-        let pipY: CGFloat = 60
-        
+        let pipView = UIView(frame: CGRect(x: 16, y: 60, width: 160, height: 240))
         if isLandscape {
-            pipWidth = 240
-            pipHeight = 160
-        } else {
-            pipWidth = 160
-            pipHeight = 240
+            let pipView = UIView(frame: CGRect(x: 16, y: 60, width: 240, height: 160))
         }
-
-        let pipView = UIView(frame: CGRect(x: pipX, y: pipY, width: pipWidth, height: pipHeight))
+        
         self.pipView = pipView
         pipView.layer.cornerRadius = 12
         pipView.clipsToBounds = true

@@ -101,7 +101,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             }
         }
     }
-    
+
     func isReady() -> Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -112,13 +112,6 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         queue.async { [weak self] in
             guard let self = self else { return }
       
-            if self.isConfiguring {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.stopSession()
-                }
-                return
-            }
-            
             if self.isRecording {
                 self.stopRecording()
             }
@@ -133,7 +126,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         if isRecording {
             return
         }
-        
+
         queue.async { [weak self] in
             guard let self = self else { return }
    
