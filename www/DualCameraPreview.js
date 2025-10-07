@@ -22,20 +22,20 @@ DualCameraPreview.disable = function (onSuccess, onError) {
 };
 
 DualCameraPreview.initVideoCallback = function (onSuccess, onError, callback) {
-    this.videoCallback = callback;
-    exec(
-            (info) => {
-              if (info.videoCallbackInitialized) {
-                DualCameraPreview.videoInitialized = true;
-                onSuccess();
-              }
-              this.videoCallback(info);
-            } ,
-            onError,
-            PLUGIN_NAME,
-            "initVideoCallback",
-            []
-        );
+  this.videoCallback = callback;
+  exec(
+      (info) => {
+        if (info.videoCallbackInitialized) {
+          DualCameraPreview.videoInitialized = true;
+          onSuccess();
+        }
+        this.videoCallback(info);
+      } ,
+      onError,
+      PLUGIN_NAME,
+      "initVideoCallback",
+      []
+  );
 }
 
 DualCameraPreview.startVideoCapture = function (options, onSuccess, onError) {
