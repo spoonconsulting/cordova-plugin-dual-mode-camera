@@ -97,8 +97,9 @@ class VideoRecorder {
                     }
                 }
                 
-                print("VideoRecorder: Writer initialized at \(self.outputURL!.path)")
+                writer.startWriting()
                 self.isWriting = true
+                self.startTime = nil
                 self.completionHandler = nil
                 
                 DispatchQueue.main.async {
@@ -119,12 +120,11 @@ class VideoRecorder {
             
             guard self.isWriting,
                   let writer = self.assetWriter,
-                  writer.status == .unknown || writer.status == .writing,
+                  writer.status == .writing,
                   let vInput = self.videoInput,
                   let adaptor = self.adaptor else { return }
 
-            if writer.status == .unknown {
-                writer.startWriting()
+            if self.startTime == nil {
                 writer.startSession(atSourceTime: presentationTime)
                 self.startTime = presentationTime
             }
