@@ -110,7 +110,7 @@ import CoreLocation
             }
 
             if let sessionManager = self.sessionManager,
-               sessionManager.isReady() {
+                sessionManager.isReady() {
                 sessionManager.stopSession()
                 sessionManager.videoMixer.unlockOrientation()
             }
@@ -118,7 +118,7 @@ import CoreLocation
             DispatchQueue.main.async {
                 NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                DispatchQueue.main.asyncAfter(deadline: .now()) {
                     self.previewBuilder?.teardownPreview()
                     self.sessionManager = nil
                     self.previewBuilder = nil
