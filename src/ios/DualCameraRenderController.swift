@@ -59,11 +59,26 @@ class DualCameraRenderController {
         
         let orientation = UIDevice.current.orientation
         let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
-        pipView.frame = CGRect(x: 16, y: 60, width: 160, height: 240)
         
+        let sizePercent: CGFloat = 0.40
+        let paddingXPercent: CGFloat = 0.03
+        let paddingYPercent: CGFloat = 0.06
+        
+        let smallerDimension = min(containerView.bounds.width, containerView.bounds.height)
+        let pipSize = smallerDimension * sizePercent
+        let paddingX = containerView.bounds.width * paddingXPercent
+        let paddingY = containerView.bounds.height * paddingYPercent
+        
+        let xPosition: CGFloat
         if isLandscape {
-            pipView.frame = CGRect(x: 20, y: 15, width: 240, height: 160)
+            xPosition = paddingX
+        } else {
+            xPosition = containerView.bounds.width - pipSize - paddingX
         }
+        let yPosition = paddingY
+        
+        pipView.frame = CGRect(x: xPosition, y: yPosition, width: pipSize, height: pipSize)
+        pipView.layer.cornerRadius = pipView.frame.width / 2
         
         frontPreviewLayer.frame = pipView.bounds
         backPreviewLayer?.frame = containerView.bounds
@@ -122,16 +137,28 @@ class DualCameraRenderController {
     }
 
     private func setupPiPView(on view: UIView) {
+        let sizePercent: CGFloat = 0.40
+        let paddingXPercent: CGFloat = 0.03
+        let paddingYPercent: CGFloat = 0.06
         let orientation = UIDevice.current.orientation
         let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
         
-        let pipView = UIView(frame: CGRect(x: 16, y: 60, width: 160, height: 240))
+        let smallerDimension = min(view.bounds.width, view.bounds.height)
+        let pipSize = smallerDimension * sizePercent
+        let paddingX = view.bounds.width * paddingXPercent
+        let paddingY = view.bounds.height * paddingYPercent
+        let xPosition: CGFloat
         if isLandscape {
-            let pipView = UIView(frame: CGRect(x: 16, y: 60, width: 240, height: 160))
+            xPosition = paddingX
+        } else {
+            xPosition = view.bounds.width - pipSize - paddingX
         }
+        let yPosition = paddingY
+        
+        let pipView = UIView(frame: CGRect(x: xPosition, y: yPosition, width: pipSize, height: pipSize))
         
         self.pipView = pipView
-        pipView.layer.cornerRadius = 12
+        pipView.layer.cornerRadius = pipSize / 2
         pipView.clipsToBounds = true
         pipView.backgroundColor = .black
 
