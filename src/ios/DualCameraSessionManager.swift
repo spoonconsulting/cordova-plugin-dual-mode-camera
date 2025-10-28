@@ -75,10 +75,18 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             self.videoMixer.lockOrientation()
 
             let isLandscape = UIDevice.current.orientation.isLandscape
+            let sizePercent: CGFloat = 0.40
+            let paddingPercent: CGFloat = 0.03
             if isLandscape {
-                self.videoMixer.pipFrame = CGRect(x: 0.03, y: 0.03, width: 0.25, height: 0.25)
+                self.videoMixer.pipFrame = CGRect(x: paddingPercent,
+                                                  y: paddingPercent,
+                                                  width: sizePercent,
+                                                  height: sizePercent)
             } else {
-                self.videoMixer.pipFrame = CGRect(x: 0.05, y: 0.05, width: 0.3, height: 0.3)
+                self.videoMixer.pipFrame = CGRect(x: 1.0 - sizePercent - paddingPercent,
+                                                  y: paddingPercent,
+                                                  width: sizePercent,
+                                                  height: sizePercent)
             }
         }
     }

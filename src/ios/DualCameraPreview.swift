@@ -379,34 +379,59 @@ import CoreLocation
         let size = background.size
         let deviceOrientation = UIDevice.current.orientation
         let isLandscape = deviceOrientation == .landscapeLeft || deviceOrientation == .landscapeRight
-        let padding: CGFloat = 16
-        var overlayWidth: CGFloat
-        var overlayHeight: CGFloat
-        var overlayRect: CGRect
-
-        overlayWidth = size.width * 0.3
-        overlayHeight = overlay.size.height * (overlayWidth / overlay.size.width)
-
+        let smallerDimension = min(size.width, size.height)
+        let overlaySize: CGFloat = smallerDimension * 0.4  // 40% of smaller dimension (matches preview)
+        let paddingPercent: CGFloat = 0.03  // 3% padding from edges
+        let padding = size.width * paddingPercent
+        let overlayRect: CGRect
         if isLandscape {
             overlayRect = CGRect(x: padding,
-                                 y: padding,
-                                 width: overlayWidth,
-                                 height: overlayHeight)
+                                y: padding,
+                                width: overlaySize,
+                                height: overlaySize)
         } else {
-            overlayRect = CGRect(x: size.width - overlayWidth - padding,
-                                 y: padding,
-                                 width: overlayWidth,
-                                 height: overlayHeight)
+            overlayRect = CGRect(x: size.width - overlaySize - padding,
+                                y: size.height - overlaySize - padding,
+                                width: overlaySize,
+                                height: overlaySize)
         }
 
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        guard let context = UIGraphicsGetCurrentContext() else {
+            return background
+        }
+        
         background.draw(in: CGRect(origin: .zero, size: size))
-        overlay.draw(in: overlayRect)
+        context.saveGState()
+        
+        let circlePath = UIBezierPath(ovalIn: overlayRect)
+        circlePath.addClip()
+        let overlayAspect = overlay.size.width / overlay.size.height
+        let targetAspect = overlayRect.width / overlayRect.height
+        
+        let drawRect: CGRect
+        if overlayAspect > targetAspect {
+            let newWidth = overlayRect.height * overlayAspect
+            let xOffset = (newWidth - overlayRect.width) / 2
+            drawRect = CGRect(x: overlayRect.origin.x - xOffset,
+                            y: overlayRect.origin.y,
+                            width: newWidth,
+                            height: overlayRect.height)
+        } else {
+            let newHeight = overlayRect.width / overlayAspect
+            let yOffset = (newHeight - overlayRect.height) / 2
+            drawRect = CGRect(x: overlayRect.origin.x,
+                            y: overlayRect.origin.y - yOffset,
+                            width: overlayRect.width,
+                            height: newHeight)
+        }
+        overlay.draw(in: drawRect)
+        context.restoreGState()
         let merged = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
 
         return merged ?? background
-    }
+    } 
 
     @objc(initVideoCallback:)
     func initVideoCallback(_ command: CDVInvokedUrlCommand) {
@@ -623,10 +648,21 @@ import CoreLocation
 
             if self.isRecording {
                 let isLandscape = UIDevice.current.orientation.isLandscape
+                let sizePercent: CGFloat = 0.40  // 40% of smaller dimension (matches preview)
+                let paddingPercent: CGFloat = 0.03  // 3% padding
+                
                 if isLandscape {
-                    sessionManager.videoMixer.pipFrame = CGRect(x: 0.03, y: 0.03, width: 0.25, height: 0.25)
+                    // Landscape: position in top-left corner
+                    sessionManager.videoMixer.pipFrame = CGRect(x: paddingPercent,
+                                                               y: paddingPercent,
+                                                               width: sizePercent,
+                                                               height: sizePercent)
                 } else {
-                    sessionManager.videoMixer.pipFrame = CGRect(x: 0.05, y: 0.05, width: 0.3, height: 0.3)
+                    // Portrait: position in top-right corner
+                    sessionManager.videoMixer.pipFrame = CGRect(x: 1.0 - sizePercent - paddingPercent,
+                                                               y: paddingPercent,
+                                                               width: sizePercent,
+                                                               height: sizePercent)
                 }
             }
         }
