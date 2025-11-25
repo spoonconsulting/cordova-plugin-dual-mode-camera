@@ -297,7 +297,6 @@ class VideoMixer {
             if let pixelBuffer = pixelBuffer {
                 pixelBuffers.append(pixelBuffer)
             }
-            pixelBuffer = nil
         }
         pixelBuffers.removeAll()
     }
