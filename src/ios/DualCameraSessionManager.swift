@@ -24,10 +24,16 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     private var _isConfiguring = false
     private var _isSetupComplete = false
     private var _isRecording = false
+    private var _mixerReady = false
     weak var delegate: DualCameraSessionManagerDelegate?
 
     func setupSession(delegate: DualCameraSessionManagerDelegate, completion: @escaping (Bool) -> Void) {
         self.delegate = delegate
+        
+        // Reset VideoMixer to ensure clean state
+        // self.videoMixer = VideoMixer()
+        self._mixerReady = false
+        
         queue.async { [weak self] in
             guard let self = self else { 
                 DispatchQueue.main.async { completion(false) }
@@ -63,16 +69,18 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
 
     func startRecording(with recorder: VideoRecorder) {
         queue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
 
             guard self.isReady() && !self.isRecording else {
-                print("Cannot start recording: session not ready or already recording")
                 return
             }
 
             self.videoRecorder = recorder
             self.isRecording = true
             self.videoMixer.lockOrientation()
+            
 
             let isLandscape = UIDevice.current.orientation.isLandscape
             if isLandscape {
@@ -80,12 +88,15 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             } else {
                 self.videoMixer.pipFrame = CGRect(x: 0.05, y: 0.05, width: 0.3, height: 0.3)
             }
+            
         }
     }
     
     func stopRecording() {
         queue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
             self.videoMixer.unlockOrientation()
             self.videoRecorder = nil
             self.isRecording = false
@@ -94,7 +105,9 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
 
     func startSession() {
         queue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
 
             if self.isSetupComplete && !self.isConfiguring && !self.session.isRunning {
                 self.session.startRunning()
@@ -108,9 +121,12 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         return _isSetupComplete && !_isConfiguring
     }
 
-    func stopSession() {
+    func stopSession(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else {
+                DispatchQueue.main.async { completion?() }
+                return
+            }
       
             if self.isRecording {
                 self.stopRecording()
@@ -119,27 +135,13 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             if self.session.isRunning {
                 self.session.stopRunning()
             }
-        }
-    }
-
-    func updateVideoOrientation(_ orientation: AVCaptureVideoOrientation) {
-        if isRecording {
-            return
-        }
-
-        queue.async { [weak self] in
-            guard let self = self else { return }
-   
-            if let backConnection = self.backOutput.connection(with: .video) {
-                if backConnection.isVideoOrientationSupported {
-                    backConnection.videoOrientation = orientation
-                }
-            }
             
-            if let frontConnection = self.frontOutput.connection(with: .video) {
-                if frontConnection.isVideoOrientationSupported {
-                    frontConnection.videoOrientation = orientation
-                }
+            // Reset mixer flag so it prepares with new orientation on restart
+            self._mixerReady = false
+            
+            // Notify completion on main thread
+            DispatchQueue.main.async {
+                completion?()
             }
         }
     }
@@ -177,25 +179,18 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     }
     
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-
-        if let videoRecorder = self.videoRecorder, self.isRecording {
-            if output == backOutput {
-                self.latestBackBuffer = sampleBuffer
-            } else if output == frontOutput {
-                self.latestFrontBuffer = sampleBuffer
-            } else if output == audioOutput {
-                videoRecorder.appendAudioBuffer(sampleBuffer)
-                return
-            }
-
-            if self.videoMixer.inputFormatDescription == nil,
-               let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
-                let orientationToUse = self.videoMixer.lockedOrientation ?? UIDevice.current.orientation
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        
+        // Pre-warm VideoMixer on first frame (during preview, before recording)
+        if !self._mixerReady && !self.isRecording && output == backOutput {
+            if let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
+                self._mixerReady = true
                 
+                let currentOrientation = UIDevice.current.orientation
                 let validOrientation: UIDeviceOrientation
-                switch orientationToUse {
+                switch currentOrientation {
                 case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
-                    validOrientation = orientationToUse
+                    validOrientation = currentOrientation
                 case .faceUp, .faceDown, .unknown:
                     validOrientation = .portrait
                 @unknown default:
@@ -206,18 +201,60 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 let targetWidth: Int32 = isLandscape ? 1920 : 1080
                 let targetHeight: Int32 = isLandscape ? 1080 : 1920
                 
+                // Prepare VideoMixer on first frame
                 self.videoMixer.prepare(with: formatDesc, outputRetainedBufferCountHint: 6, targetWidth: targetWidth, targetHeight: targetHeight)
             }
+        }
+        
+        if let videoRecorder = self.videoRecorder, self.isRecording {
+            if output == backOutput {
+                self.latestBackBuffer = sampleBuffer
+            } else if output == frontOutput {
+                self.latestFrontBuffer = sampleBuffer
+            } else if output == audioOutput {
+                videoRecorder.appendAudioBuffer(sampleBuffer)
+                return
+            }
 
-            guard let front = latestFrontBuffer, let back = latestBackBuffer else { return }
+            // VideoMixer should already be pre-warmed from preview
+            // If not (edge case), it will prepare now but recording might have brief lag
+            if self.videoMixer.inputFormatDescription == nil {
+                if let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
+                    let orientationToUse = self.videoMixer.lockedOrientation ?? UIDevice.current.orientation
+                    let validOrientation: UIDeviceOrientation
+                    switch orientationToUse {
+                    case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
+                        validOrientation = orientationToUse
+                    case .faceUp, .faceDown, .unknown:
+                        validOrientation = .portrait
+                    @unknown default:
+                        validOrientation = .portrait
+                    }
+                    
+                    let isLandscape = validOrientation.isLandscape
+                    let targetWidth: Int32 = isLandscape ? 1920 : 1080
+                    let targetHeight: Int32 = isLandscape ? 1080 : 1920
+                    
+                    self.videoMixer.prepare(with: formatDesc, outputRetainedBufferCountHint: 6, targetWidth: targetWidth, targetHeight: targetHeight)
+                }
+                return // Skip first frame
+            }
+
+            guard let front = latestFrontBuffer, let back = latestBackBuffer else { 
+                return 
+            }
 
             guard let frontBuffer = CMSampleBufferGetImageBuffer(front),
-                  let backBuffer = CMSampleBufferGetImageBuffer(back) else { return }
+                  let backBuffer = CMSampleBufferGetImageBuffer(back) else { 
+                return 
+            }
 
             if let merged = self.videoMixer.mix(fullScreenPixelBuffer: backBuffer, pipPixelBuffer: frontBuffer, fullScreenPixelBufferIsFrontCamera: false) {
-                videoRecorder.appendVideoPixelBuffer(merged, withPresentationTime: CMSampleBufferGetPresentationTimeStamp(back))
+                let backPts = CMSampleBufferGetPresentationTimeStamp(back)
+                videoRecorder.appendVideoPixelBuffer(merged, withPresentationTime: backPts)
                 latestFrontBuffer = nil
                 latestBackBuffer = nil
+            } else {
             }
         }
 

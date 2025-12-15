@@ -34,7 +34,9 @@ import CoreLocation
         }
 
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
 
             guard !self.isSessionEnabled else {
                 DispatchQueue.main.async {
@@ -95,7 +97,9 @@ import CoreLocation
     @objc(disable:)
     func disable(_ command: CDVInvokedUrlCommand) {
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
 
             guard self.isSessionEnabled else {
                 DispatchQueue.main.async {
@@ -110,7 +114,7 @@ import CoreLocation
             }
 
             if let sessionManager = self.sessionManager,
-                sessionManager.isReady() {
+               sessionManager.isReady() {
                 sessionManager.stopSession()
                 sessionManager.videoMixer.unlockOrientation()
             }
@@ -118,7 +122,7 @@ import CoreLocation
             DispatchQueue.main.async {
                 NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
 
-                DispatchQueue.main.asyncAfter(deadline: .now()) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.previewBuilder?.teardownPreview()
                     self.sessionManager = nil
                     self.previewBuilder = nil
@@ -269,7 +273,6 @@ import CoreLocation
             }
             
             CGImageDestinationAddImageFromSource(destination, imageSource, 0, mutableDict)
-            
             guard CGImageDestinationFinalize(destination) else {
                 let errorResult = CDVPluginResult(status: .error, messageAs: "Failed to finalize image destination")
                 self.commandDelegate.send(errorResult, callbackId: command.callbackId)
@@ -420,6 +423,7 @@ import CoreLocation
     
     @objc(startVideoCapture:)
      func startVideoCapture(_ command: CDVInvokedUrlCommand) {
+        
         guard let options = command.arguments.first as? [String: Any] else {
             let errorResult = CDVPluginResult(status: .error, messageAs: "Missing options")!
             self.commandDelegate.send(errorResult, callbackId: command.callbackId)
@@ -428,7 +432,6 @@ import CoreLocation
         
         let recordWithAudio = options["recordWithAudio"] as? Bool ?? true
         let videoDurationMs = options["videoDurationMs"] as? Int ?? 3000
-        
         guard isSessionEnabled,
               let sessionManager = self.sessionManager,
               sessionManager.isReady() else {
@@ -479,6 +482,7 @@ import CoreLocation
         duration: Int,
         completion: @escaping (String, String?, Error?) -> Void
     ) {
+        
         guard !isRecording else {
             completion("", nil, NSError(domain: "DualCamera", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Already recording"]))
             return
@@ -487,10 +491,13 @@ import CoreLocation
         self.videoRecorder = VideoRecorder()
         self.recordingCompletion = completion
         self.isRecording = true
+        
 
         let recordingOrientation = getValidRecordingOrientation()
         self.videoRecorder?.startWriting(audioEnabled: recordWithAudio, recordingOrientation: recordingOrientation) { [weak self] error in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
 
             if let error = error {
                 self.isRecording = false
@@ -557,7 +564,10 @@ import CoreLocation
     }
     
     func stopDualVideoRecording() {
-        guard isRecording else { return }
+        
+        guard isRecording else { 
+            return 
+        }
 
         DispatchQueue.main.async { [weak self] in
             self?.recordingTimer?.invalidate()
@@ -570,7 +580,9 @@ import CoreLocation
         }
 
         self.videoRecorder?.stopWriting { [weak self] path, thumb, err in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
 
             self.isRecording = false
             self.recordingCompletion?(path, thumb, err)
