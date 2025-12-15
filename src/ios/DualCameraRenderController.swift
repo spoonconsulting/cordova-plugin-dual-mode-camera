@@ -78,20 +78,17 @@ class DualCameraRenderController {
             return 
         }
         
-        let orientation = UIDevice.current.orientation
-        let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
+        let deviceOrientation = OrientationHelper.validDeviceOrientation()
         
         // Update PIP frame based on orientation
-        pipView.frame = isLandscape 
-            ? CGRect(x: 20, y: 15, width: 240, height: 160)
-            : CGRect(x: 16, y: 60, width: 160, height: 240)
+        pipView.frame = OrientationHelper.pipFrame(for: deviceOrientation)
         
         // Update preview layer frames
         frontPreviewLayer.frame = pipView.bounds
         backPreviewLayer.frame = containerView.bounds
         
         // Update connection orientations for both preview AND capture
-        let videoOrientation = getVideoOrientation()
+        let videoOrientation = OrientationHelper.currentAVCaptureOrientation(from: deviceOrientation)
         
         // Update preview layer connections
         if let frontConnection = frontPreviewLayer.connection {
@@ -134,7 +131,7 @@ class DualCameraRenderController {
             let connection = AVCaptureConnection(inputPort: backPort, videoPreviewLayer: backLayer)
             if session.canAddConnection(connection) {
                 session.addConnection(connection)
-                connection.videoOrientation = getVideoOrientation()
+                connection.videoOrientation = OrientationHelper.currentAVCaptureOrientation()
             }
             
             if let webViewLayer = view.subviews.first(where: { $0 is WKWebView || $0 is UIWebView })?.layer {
@@ -146,15 +143,8 @@ class DualCameraRenderController {
     }
 
     private func setupPiPView(on view: UIView) {
-        let orientation = UIDevice.current.orientation
-        let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
-        
-        // Create PIP view with correct frame based on orientation
-        let pipFrame = isLandscape 
-            ? CGRect(x: 20, y: 15, width: 240, height: 160)  // Landscape
-            : CGRect(x: 16, y: 60, width: 160, height: 240)  // Portrait
-        
-        let pipView = UIView(frame: pipFrame)
+        let deviceOrientation = OrientationHelper.validDeviceOrientation()
+        let pipView = UIView(frame: OrientationHelper.pipFrame(for: deviceOrientation))
         self.pipView = pipView
         pipView.layer.cornerRadius = 12
         pipView.clipsToBounds = true
@@ -183,28 +173,12 @@ class DualCameraRenderController {
             let connection = AVCaptureConnection(inputPort: frontPort, videoPreviewLayer: frontLayer)
             if session.canAddConnection(connection) {
                 session.addConnection(connection)
-                connection.videoOrientation = getVideoOrientation()
+                connection.videoOrientation = OrientationHelper.currentAVCaptureOrientation()
                 connection.automaticallyAdjustsVideoMirroring = false
                 connection.isVideoMirrored = true  // Mirror front camera
             }
             
             pipView.layer.addSublayer(frontLayer)
-        }
-    }
-    
-    private func getVideoOrientation() -> AVCaptureVideoOrientation {
-        let orientation = UIDevice.current.orientation
-        switch orientation {
-        case .portrait:
-            return .portrait
-        case .portraitUpsideDown:
-            return .portraitUpsideDown
-        case .landscapeLeft:
-            return .landscapeRight
-        case .landscapeRight:
-            return .landscapeLeft
-        default:
-            return .portrait
         }
     }
 }

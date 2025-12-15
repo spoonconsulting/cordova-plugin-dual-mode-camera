@@ -14,7 +14,7 @@ import CoreLocation
     private var recordingCompletion: ((String, String?, Error?) -> Void)?
     private var recordingTimer: Timer?
     private let sessionQueue = DispatchQueue(label: "dual.camera.session.queue", qos: .userInitiated)
-    private let stateLock = NSLock()
+    private let stateQueue = DispatchQueue(label: "dual.camera.preview.state", qos: .userInitiated)
     private var _isSessionEnabled = false
     private var _isRecording = false
 
@@ -34,8 +34,8 @@ import CoreLocation
         }
 
         sessionQueue.async { [weak self] in
-            guard let self = self else { 
-                return 
+            guard let self = self else {
+                return
             }
 
             guard !self.isSessionEnabled else {
@@ -97,8 +97,8 @@ import CoreLocation
     @objc(disable:)
     func disable(_ command: CDVInvokedUrlCommand) {
         sessionQueue.async { [weak self] in
-            guard let self = self else { 
-                return 
+            guard let self = self else {
+                return
             }
 
             guard self.isSessionEnabled else {
@@ -495,8 +495,8 @@ import CoreLocation
 
         let recordingOrientation = getValidRecordingOrientation()
         self.videoRecorder?.startWriting(audioEnabled: recordWithAudio, recordingOrientation: recordingOrientation) { [weak self] error in
-            guard let self = self else { 
-                return 
+            guard let self = self else {
+                return
             }
 
             if let error = error {
@@ -565,8 +565,8 @@ import CoreLocation
     
     func stopDualVideoRecording() {
         
-        guard isRecording else { 
-            return 
+        guard isRecording else {
+            return
         }
 
         DispatchQueue.main.async { [weak self] in
@@ -580,8 +580,8 @@ import CoreLocation
         }
 
         self.videoRecorder?.stopWriting { [weak self] path, thumb, err in
-            guard let self = self else { 
-                return 
+            guard let self = self else {
+                return
             }
 
             self.isRecording = false
@@ -645,34 +645,16 @@ import CoreLocation
     }
 
     private var isSessionEnabled: Bool {
-        get {
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            return _isSessionEnabled
-        }
-
-        set {
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            _isSessionEnabled = newValue
-        }
+        get { stateQueue.sync { _isSessionEnabled } }
+        set { stateQueue.sync { _isSessionEnabled = newValue } }
     }
     
     private var isRecording: Bool {
-        get {
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            return _isRecording
-        }
-
-        set {
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            _isRecording = newValue
-        }
+        get { stateQueue.sync { _isRecording } }
+        set { stateQueue.sync { _isRecording = newValue } }
     }
     
     var isCurrentlyRecording: Bool {
-        return isRecording
+        stateQueue.sync { _isRecording }
     }
 }
