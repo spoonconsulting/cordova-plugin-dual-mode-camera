@@ -25,10 +25,11 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     private var _isSetupComplete = false
     private var _isRecording = false
     private var isMixerReady = false
+    private var hasAppendedFirstFrame = false
+    var onFirstVideoFrame: (() -> Void)?
     weak var delegate: DualCameraSessionManagerDelegate?
     
 
-    // Centralized mixer preparation
     private func prepareMixer(with formatDesc: CMFormatDescription, orientation: UIDeviceOrientation?) {
         let orientationToUse = orientation ?? OrientationHelper.validDeviceOrientation()
         let isLandscape = orientationToUse.isLandscape
@@ -40,13 +41,9 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                                 targetHeight: targetHeight)
     }
 
-    // Orientation utilities are centralized in OrientationHelper
-
     func setupSession(delegate: DualCameraSessionManagerDelegate, completion: @escaping (Bool) -> Void) {
         self.delegate = delegate
         
-        // Reset VideoMixer to ensure clean state
-        // self.videoMixer = VideoMixer()
         self.isMixerReady = false
         
         queue.async { [weak self] in
@@ -84,19 +81,14 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
 
     func startRecording(with recorder: VideoRecorder) {
         queue.async { [weak self] in
-            guard let self = self else { 
-                return 
-            }
+            guard let self = self else { return }
 
-            guard self.isReady() && !self.isRecording else {
-                return
-            }
+            guard self.isReady() && !self.isRecording else { return }
 
             self.videoRecorder = recorder
             self.isRecording = true
+            self.hasAppendedFirstFrame = false
             self.videoMixer.lockOrientation()
-            
-
             let isLandscape = UIDevice.current.orientation.isLandscape
             if isLandscape {
                 self.videoMixer.pipFrame = CGRect(x: 0.03, y: 0.03, width: 0.25, height: 0.25)
@@ -109,9 +101,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     
     func stopRecording() {
         queue.async { [weak self] in
-            guard let self = self else { 
-                return 
-            }
+            guard let self = self else { return }
             self.videoMixer.unlockOrientation()
             self.videoRecorder = nil
             self.isRecording = false
@@ -120,9 +110,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
 
     func startSession() {
         queue.async { [weak self] in
-            guard let self = self else { 
-                return 
-            }
+            guard let self = self else { return }
 
             if self.isSetupComplete && !self.isConfiguring && !self.session.isRunning {
                 self.session.startRunning()
@@ -131,7 +119,6 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     }
 
     func isReady() -> Bool {
-        // state properties are already synchronized via stateQueue
         return isSetupComplete && !isConfiguring
     }
 
@@ -150,10 +137,8 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 self.session.stopRunning()
             }
             
-            // Reset mixer flag so it prepares with new orientation on restart
             self.isMixerReady = false
             
-            // Notify completion on main thread
             DispatchQueue.main.async {
                 completion?()
             }
@@ -164,7 +149,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         guard let backCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let backInput = try? AVCaptureDeviceInput(device: backCamera),
               session.canAddInput(backInput) else {
-            print("[DualCameraSession] Cannot create/add back camera input")
+            print("Cannot create/add back camera input")
             return false
         }
 
@@ -187,11 +172,11 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 connection.videoOrientation = OrientationHelper.currentAVCaptureOrientation()
                 session.addConnection(connection)
             } else {
-                print("[DualCameraSession] Back camera port missing for connection")
+                print("Back camera port missing for connection")
                 return false
             }
         } else {
-            print("[DualCameraSession] Cannot add back video output")
+            print("Cannot add back video output")
             return false
         }
         return true
@@ -200,11 +185,9 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         
-        // Pre-warm VideoMixer on first frame (during preview, before recording)
         if !self.isMixerReady && !self.isRecording && output == backOutput {
             if let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
                 self.isMixerReady = true
-                // Prepare VideoMixer on first frame during preview
                 prepareMixer(with: formatDesc, orientation: nil)
             }
         }
@@ -219,13 +202,10 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 return
             }
 
-            // VideoMixer should already be pre-warmed from preview
-            // If not (edge case), prepare now using a valid orientation
             if self.videoMixer.inputFormatDescription == nil,
                let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
-                // Edge-case: prepare now using locked orientation if available
                 prepareMixer(with: formatDesc, orientation: self.videoMixer.lockedOrientation)
-                return // Skip first frame while preparing
+                return
             }
 
             guard let front = latestFrontBuffer, let back = latestBackBuffer else { 
@@ -240,6 +220,15 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             if let merged = self.videoMixer.mix(fullScreenPixelBuffer: backBuffer, pipPixelBuffer: frontBuffer, fullScreenPixelBufferIsFrontCamera: false) {
                 let backPts = CMSampleBufferGetPresentationTimeStamp(back)
                 videoRecorder.appendVideoPixelBuffer(merged, withPresentationTime: backPts)
+                
+                if !self.hasAppendedFirstFrame {
+                    self.hasAppendedFirstFrame = true
+                    if let firstFrameHandler = self.onFirstVideoFrame {
+                        self.onFirstVideoFrame = nil
+                        DispatchQueue.main.async { firstFrameHandler() }
+                    }
+                }
+                
                 latestFrontBuffer = nil
                 latestBackBuffer = nil
             } else {
@@ -253,7 +242,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         guard let frontCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
               let frontInput = try? AVCaptureDeviceInput(device: frontCamera),
               session.canAddInput(frontInput) else {
-            print("[DualCameraSession] Cannot create/add front camera input")
+            print("Cannot create/add front camera input")
             return false
         }
 
@@ -278,11 +267,11 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 connection.isVideoMirrored = true
                 session.addConnection(connection)
             } else {
-                print("[DualCameraSession] Front camera port missing for connection")
+                print("Front camera port missing for connection")
                 return false
             }
         } else {
-            print("[DualCameraSession] Cannot add front video output")
+            print("Cannot add front video output")
             return false
         }
         return true
@@ -292,7 +281,7 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
         guard let mic = AVCaptureDevice.default(for: .audio),
               let micInput = try? AVCaptureDeviceInput(device: mic),
               session.canAddInput(micInput) else {
-            print("[DualCameraSession] Cannot create/add microphone input")
+            print("Cannot create/add microphone input")
             return false
         }
 
@@ -308,36 +297,37 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 if session.canAddConnection(audioConnection) {
                     session.addConnection(audioConnection)
                 } else {
-                    print("[DualCameraSession] Cannot add microphone connection")
+                    print("Cannot add microphone connection")
                     return false
                 }
             } else {
-                print("[DualCameraSession] Microphone port missing for connection")
+                print("Microphone port missing for connection")
                 return false
             }
 
             self.audioOutput = audioOutput
         } else {
-            print("[DualCameraSession] Cannot add microphone output")
+            print("Cannot add microphone output")
             return false
         }
         return true
     }
 
     private func configureCamera(_ device: AVCaptureDevice, desiredWidth: Int32, desiredHeight: Int32) {
-        for format in device.formats {
-            let description = format.formatDescription
-            let dimensions = CMVideoFormatDescriptionGetDimensions(description)
-            if dimensions.width == desiredWidth && dimensions.height == desiredHeight {
-                do {
-                    try device.lockForConfiguration()
-                    device.activeFormat = format
-                    device.unlockForConfiguration()
-                    break
-                } catch {
-                    // Ignore and try next format
-                }
-            }
+        guard let matchingFormat = device.formats.first(where: {
+            let dims = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+            return dims.width == desiredWidth && dims.height == desiredHeight
+        }) else {
+            print("No matching format \(desiredWidth)x\(desiredHeight) for \(device.localizedName)")
+            return
+        }
+
+        do {
+            try device.lockForConfiguration()
+            device.activeFormat = matchingFormat
+            device.unlockForConfiguration()
+        } catch {
+            print("Failed to lock configuration for \(device.localizedName): \(error)")
         }
     }
     
@@ -354,6 +344,21 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     private var isRecording: Bool {
         get { stateQueue.sync { _isRecording } }
         set { stateQueue.sync { _isRecording = newValue } }
+    }
+    
+    var hasFirstFrame: Bool {
+        stateQueue.sync { hasAppendedFirstFrame }
+    }
+
+    func notifyWhenFirstFrame(_ completion: @escaping () -> Void) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            if self.hasAppendedFirstFrame {
+                DispatchQueue.main.async { completion() }
+            } else {
+                self.onFirstVideoFrame = completion
+            }
+        }
     }
 }
 

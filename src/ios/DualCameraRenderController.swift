@@ -53,15 +53,12 @@ class DualCameraRenderController {
             return 
         }
         
-        // Re-enable camera with new orientation
         DispatchQueue.main.async {
             self.teardownPreview()
             
-            // Stop session and wait for completion before re-setup
             sessionManager.stopSession { [weak self] in
                 guard let self = self else { return }
                 
-                // Now that session is fully stopped, re-setup with correct orientation
                 self.setupPreview(on: containerView, session: session, sessionManager: sessionManager, dualCameraPreview: dualCameraPreview)
                 self.updatePreviewForCurrentOrientation()
                 sessionManager.startSession()
@@ -80,17 +77,13 @@ class DualCameraRenderController {
         
         let deviceOrientation = OrientationHelper.validDeviceOrientation()
         
-        // Update PIP frame based on orientation
         pipView.frame = OrientationHelper.pipFrame(for: deviceOrientation)
         
-        // Update preview layer frames
         frontPreviewLayer.frame = pipView.bounds
         backPreviewLayer.frame = containerView.bounds
         
-        // Update connection orientations for both preview AND capture
         let videoOrientation = OrientationHelper.currentAVCaptureOrientation(from: deviceOrientation)
         
-        // Update preview layer connections
         if let frontConnection = frontPreviewLayer.connection {
             if frontConnection.isVideoOrientationSupported {
                 frontConnection.videoOrientation = videoOrientation
@@ -103,7 +96,6 @@ class DualCameraRenderController {
             }
         }
         
-        // Update capture output connections (for recording)
         if let backOutputConnection = sessionManager.backOutput.connection(with: .video) {
             if backOutputConnection.isVideoOrientationSupported {
                 backOutputConnection.videoOrientation = videoOrientation
@@ -118,12 +110,10 @@ class DualCameraRenderController {
     }
 
     private func setupBackPreviewLayer(on view: UIView, session: AVCaptureMultiCamSession) {
-        // Use WithNoConnections for MultiCamSession - we'll create connections manually
         backPreviewLayer = AVCaptureVideoPreviewLayer(sessionWithNoConnection: session)
         backPreviewLayer?.videoGravity = .resizeAspectFill
         backPreviewLayer?.frame = view.bounds
 
-        // Manually create connection between back camera input and preview layer
         if let backLayer = backPreviewLayer,
            let backInput = sessionManager?.backInput,
            let backPort = sessionManager?.backVideoPort {
@@ -160,12 +150,10 @@ class DualCameraRenderController {
     private func setupFrontPreviewLayer(session: AVCaptureMultiCamSession) {
         guard let pipView = self.pipView else { return }
 
-        // Use WithNoConnections for MultiCamSession - we'll create connections manually
         frontPreviewLayer = AVCaptureVideoPreviewLayer(sessionWithNoConnection: session)
         frontPreviewLayer?.videoGravity = .resizeAspectFill
         frontPreviewLayer?.frame = pipView.bounds
 
-        // Manually create connection between front camera input and preview layer
         if let frontLayer = frontPreviewLayer,
            let frontInput = sessionManager?.frontInput,
            let frontPort = sessionManager?.frontVideoPort {

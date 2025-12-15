@@ -14,7 +14,7 @@
     </js-module>
 
     <platform name="android">
-
+ 
     </platform>
 
     <platform name="ios">
@@ -38,6 +38,7 @@
     <source-file src="src/ios/DualCameraRenderController.swift" />
     <source-file src="src/ios/VideoRecorder.swift" />
     <source-file src="src/ios/VideoMixer.swift" />
+    <source-file src="src/ios/OrientationHelper.swift" />
 
     <framework src="ImageIO.framework" weak="true" />
     <framework src="MobileCoreServices.framework" />

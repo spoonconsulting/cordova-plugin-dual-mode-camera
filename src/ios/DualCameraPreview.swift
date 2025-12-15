@@ -34,9 +34,7 @@ import CoreLocation
         }
 
         sessionQueue.async { [weak self] in
-            guard let self = self else {
-                return
-            }
+            guard let self = self else { return }
 
             guard !self.isSessionEnabled else {
                 DispatchQueue.main.async {
@@ -97,9 +95,7 @@ import CoreLocation
     @objc(disable:)
     func disable(_ command: CDVInvokedUrlCommand) {
         sessionQueue.async { [weak self] in
-            guard let self = self else {
-                return
-            }
+            guard let self = self else { return }
 
             guard self.isSessionEnabled else {
                 DispatchQueue.main.async {
@@ -495,9 +491,7 @@ import CoreLocation
 
         let recordingOrientation = getValidRecordingOrientation()
         self.videoRecorder?.startWriting(audioEnabled: recordWithAudio, recordingOrientation: recordingOrientation) { [weak self] error in
-            guard let self = self else {
-                return
-            }
+            guard let self = self else { return }
 
             if let error = error {
                 self.isRecording = false
@@ -569,6 +563,17 @@ import CoreLocation
             return
         }
 
+        if let sessionManager = sessionManager, !sessionManager.hasFirstFrame {
+            sessionManager.notifyWhenFirstFrame { [weak self] in
+                guard let self = self else { return }
+                self.sessionQueue.async { [weak self] in
+                    guard let self = self else { return }
+                    self.stopDualVideoRecording()
+                }
+            }
+            return
+        }
+
         DispatchQueue.main.async { [weak self] in
             self?.recordingTimer?.invalidate()
             self?.recordingTimer = nil
@@ -580,9 +585,7 @@ import CoreLocation
         }
 
         self.videoRecorder?.stopWriting { [weak self] path, thumb, err in
-            guard let self = self else {
-                return
-            }
+            guard let self = self else { return }
 
             self.isRecording = false
             self.recordingCompletion?(path, thumb, err)

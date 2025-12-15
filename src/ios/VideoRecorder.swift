@@ -138,21 +138,22 @@ class VideoRecorder {
                 
                 
                 
-                guard writer.startWriting() else {
-                    DispatchQueue.main.async {
-                        completion(writer.error ?? NSError(domain: "VideoRecorder",
-                                                           code: 1003,
-                                                           userInfo: [NSLocalizedDescriptionKey: "Failed to start writing"]))
-                    }
-                    return
-                }
+        guard writer.startWriting() else {
+            let err = writer.error
+            DispatchQueue.main.async {
+                completion(err ?? NSError(domain: "VideoRecorder",
+                                          code: 1003,
+                                          userInfo: [NSLocalizedDescriptionKey: "Failed to start writing"]))
+            }
+            return
+        }
                 
-                self.isWriting = true
-                self.completionHandler = nil
-                
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
+            self.isWriting = true
+            self.completionHandler = nil
+            
+            DispatchQueue.main.async {
+                completion(nil)
+            }
 
             } catch {
                 DispatchQueue.main.async {
@@ -164,29 +165,21 @@ class VideoRecorder {
 
     func appendVideoPixelBuffer(_ pixelBuffer: CVPixelBuffer, withPresentationTime presentationTime: CMTime) {
         writerQueue.async { [weak self] in
-            guard let self = self else { 
-                return 
+            guard let self = self else { return 
             }
             
             
-            guard self.isWriting else {
-                return
-            }
+            guard self.isWriting else { return }
             
-            guard let writer = self.assetWriter else {
-                return
-            }
+            guard let writer = self.assetWriter else { return }
             
             
-            guard writer.status == .writing else {
-                return
-            }
+            guard writer.status == .writing else { return }
             
             guard let vInput = self.videoInput, let adaptor = self.adaptor else {
                 return
             }
 
-            // Start session on first frame (writer.startWriting() was already called during setup)
             if self.startTime == nil {
                 writer.startSession(atSourceTime: presentationTime)
                 self.startTime = presentationTime
@@ -201,30 +194,17 @@ class VideoRecorder {
     func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         writerQueue.async { [weak self] in
-            guard let self = self else { 
-                return 
-            }
+            guard let self = self else { return }
             
             
-            guard self.isWriting else {
-                return
-            }
+            guard self.isWriting else { return }
             
-            guard let writer = self.assetWriter else {
-                return
-            }
+            guard let writer = self.assetWriter else { return }
             
-            guard let aInput = self.audioInput else {
-                return
-            }
+            guard let aInput = self.audioInput else { return }
             
+            guard writer.status == .writing, self.startTime != nil else { return }
 
-            // Wait for video to start the session (ensures timestamp sync)
-            guard writer.status == .writing, self.startTime != nil else {
-                return
-            }
-
-            // Append current buffer
             if aInput.isReadyForMoreMediaData {
                 aInput.append(sampleBuffer)
             }
