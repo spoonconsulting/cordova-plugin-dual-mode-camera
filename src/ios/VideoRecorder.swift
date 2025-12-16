@@ -57,10 +57,9 @@ class VideoRecorder {
         ]
 
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: sourcePixelBufferAttributes)
-
         guard writer.canAdd(input) else { return false }
+        
         writer.add(input)
-
         self.videoInput = input
         self.adaptor = adaptor
         return true
@@ -97,7 +96,6 @@ class VideoRecorder {
             }
 
             self.resetState()
-
             do {
                 let outputDirectory = try FileManager.default.url(
                     for: .libraryDirectory,
@@ -107,7 +105,6 @@ class VideoRecorder {
                 ).appendingPathComponent("NoCloud", isDirectory: true)
 
                 try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-
                 let fileName = UUID().uuidString + ".mov"
                 self.outputURL = outputDirectory.appendingPathComponent(fileName)
                 let writer = try self.makeWriter(at: self.outputURL!)
@@ -136,24 +133,22 @@ class VideoRecorder {
                     }
                 }
                 
+                guard writer.startWriting() else {
+                    let err = writer.error
+                    DispatchQueue.main.async {
+                        completion(err ?? NSError(domain: "VideoRecorder",
+                                                code: 1003,
+                                                userInfo: [NSLocalizedDescriptionKey: "Failed to start writing"]))
+                    }
+                    return
+                 }
                 
+                self.isWriting = true
+                self.completionHandler = nil
                 
-        guard writer.startWriting() else {
-            let err = writer.error
-            DispatchQueue.main.async {
-                completion(err ?? NSError(domain: "VideoRecorder",
-                                          code: 1003,
-                                          userInfo: [NSLocalizedDescriptionKey: "Failed to start writing"]))
-            }
-            return
-        }
-                
-            self.isWriting = true
-            self.completionHandler = nil
-            
-            DispatchQueue.main.async {
-                completion(nil)
-            }
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
 
             } catch {
                 DispatchQueue.main.async {
@@ -165,9 +160,7 @@ class VideoRecorder {
 
     func appendVideoPixelBuffer(_ pixelBuffer: CVPixelBuffer, withPresentationTime presentationTime: CMTime) {
         writerQueue.async { [weak self] in
-            guard let self = self else { return 
-            }
-            
+            guard let self = self else { return }
             
             guard self.isWriting else { return }
             
@@ -176,9 +169,7 @@ class VideoRecorder {
             
             guard writer.status == .writing else { return }
             
-            guard let vInput = self.videoInput, let adaptor = self.adaptor else {
-                return
-            }
+            guard let vInput = self.videoInput, let adaptor = self.adaptor else { return }
 
             if self.startTime == nil {
                 writer.startSession(atSourceTime: presentationTime)
@@ -231,9 +222,7 @@ class VideoRecorder {
             self.audioInput?.markAsFinished()
 
             writer.finishWriting { [weak self] in
-                guard let self = self else { 
-                    return 
-                }
+                guard let self = self else { return }
 
 
                 if let error = writer.error {

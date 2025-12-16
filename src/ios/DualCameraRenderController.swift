@@ -163,7 +163,7 @@ class DualCameraRenderController {
                 session.addConnection(connection)
                 connection.videoOrientation = OrientationHelper.currentAVCaptureOrientation()
                 connection.automaticallyAdjustsVideoMirroring = false
-                connection.isVideoMirrored = true  // Mirror front camera
+                connection.isVideoMirrored = true
             }
             
             pipView.layer.addSublayer(frontLayer)

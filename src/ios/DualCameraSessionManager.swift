@@ -208,14 +208,10 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
                 return
             }
 
-            guard let front = latestFrontBuffer, let back = latestBackBuffer else { 
-                return 
-            }
+            guard let front = latestFrontBuffer, let back = latestBackBuffer else { return }
 
             guard let frontBuffer = CMSampleBufferGetImageBuffer(front),
-                  let backBuffer = CMSampleBufferGetImageBuffer(back) else { 
-                return 
-            }
+                  let backBuffer = CMSampleBufferGetImageBuffer(back) else { return }
 
             if let merged = self.videoMixer.mix(fullScreenPixelBuffer: backBuffer, pipPixelBuffer: frontBuffer, fullScreenPixelBufferIsFrontCamera: false) {
                 let backPts = CMSampleBufferGetPresentationTimeStamp(back)

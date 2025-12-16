@@ -22,10 +22,8 @@ enum OrientationHelper {
         case .portraitUpsideDown:
             return .portraitUpsideDown
         case .landscapeLeft:
-            // Device home button on the right => video orientation is landscapeRight
             return .landscapeRight
         case .landscapeRight:
-            // Device home button on the left => video orientation is landscapeLeft
             return .landscapeLeft
         default:
             return .portrait
