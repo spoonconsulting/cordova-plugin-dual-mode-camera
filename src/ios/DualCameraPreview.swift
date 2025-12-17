@@ -111,22 +111,27 @@ import CoreLocation
 
             if let sessionManager = self.sessionManager,
                sessionManager.isReady() {
-                sessionManager.stopSession()
-                sessionManager.videoMixer.unlockOrientation()
-            }
-
-            DispatchQueue.main.async {
-                NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.previewBuilder?.teardownPreview()
-                    self.sessionManager = nil
-                    self.previewBuilder = nil
-                    self.isSessionEnabled = false
-                    let pluginResult = CDVPluginResult(status: .ok, messageAs: "Dual mode disabled successfully")
-                    self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
+                sessionManager.stopSession { [weak self] in
+                    guard let self = self else { return }
+                    self.disableCompletion(command: command)
                 }
+                sessionManager.videoMixer.unlockOrientation()
+            } else {
+                self.disableCompletion(command: command)
             }
+        }
+    }
+
+    private func disableCompletion(command: CDVInvokedUrlCommand) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+            
+            self.previewBuilder?.teardownPreview()
+            self.sessionManager = nil
+            self.previewBuilder = nil
+            self.isSessionEnabled = false
+            let pluginResult = CDVPluginResult(status: .ok, messageAs: "Dual mode disabled successfully")
+            self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
         }
     }
 
@@ -558,7 +563,6 @@ import CoreLocation
     }
     
     func stopDualVideoRecording() {
-        
         guard isRecording else {
             return
         }
