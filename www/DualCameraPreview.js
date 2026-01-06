@@ -6,12 +6,10 @@ DualCameraPreview.videoInitialized = false;
 DualCameraPreview.videoCallback = null;
 
 DualCameraPreview.deviceSupportDualMode = function (onSuccess, onError) {
-  console.log("Device support dual mode Aurelie")
   exec(onSuccess, onError, PLUGIN_NAME, "deviceSupportDualMode", []);
 };
 
 DualCameraPreview.enable = function (onSuccess, onError) {
-   console.log("Dual mode enabled Aurelie")
   exec(onSuccess, onError, PLUGIN_NAME, "enable", []);
 };
 
@@ -20,7 +18,6 @@ DualCameraPreview.capture = function (onSuccess, onError) {
 };
 
 DualCameraPreview.disable = function (onSuccess, onError) {
-     console.log("Dual mode disabled Aurelie")
   exec(onSuccess, onError, PLUGIN_NAME, "disable", []);
 };
 
