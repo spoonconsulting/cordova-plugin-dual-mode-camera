@@ -1,5 +1,4 @@
-Cordova Plugin Dual Camera Preview
-====================
+# Cordova Plugin Dual Camera Preview
 
 Cordova plugin that allows dual mode camera
 
@@ -13,24 +12,25 @@ cordova plugin add https://github.com/spoonconsulting/cordova-plugin-dual-mode-c
 # Methods
 
 ### deviceSupportDualMode(successCallback, errorCallback)
+
 Check if device support dual mode
 <br>
 
 ```javascript
-DualCameraPreview.deviceSupportDualMode = function (onSuccess, onError) {
-  exec(onSuccess, onError, PLUGIN_NAME, "deviceSupportDualMode", []);
-};
+DualCameraPreview.deviceSupportDualMode((value: unknown) => {
+  console.log("Device support dual mode", value);
+});
 ```
 
 ### enable(successCallback, errorCallback)
 
-Starts dual mode 
+Starts dual mode
 <br>
 
 ```javascript
-DualCameraPreview.enable = function (onSuccess, onError) {
-  exec(onSuccess, onError, PLUGIN_NAME, "enable", []);
-};
+DualCameraPreview.enable(() => {
+  console.log("Dual mode enabled");
+});
 ```
 
 ### capture(successCallback, errorCallback)
@@ -38,9 +38,9 @@ DualCameraPreview.enable = function (onSuccess, onError) {
 <info> Capture image in Dual mode </info><br>
 
 ```javascript
-DualCameraPreview.capture = function (onSuccess, onError) {
-  exec(onSuccess, onError, PLUGIN_NAME, "capture", []);
-};
+DualCameraPreview.capture((imageNativePath: string) => {
+  console.log(imageNativePath);
+});
 ```
 
 ### disable(successCallback, errorCallback)
@@ -48,7 +48,7 @@ DualCameraPreview.capture = function (onSuccess, onError) {
 <info> Stops dual mode</info><br>
 
 ```javascript
-DualCameraPreview.capture = function (onSuccess, onError) {
-  exec(onSuccess, onError, PLUGIN_NAME, "capture", []);
-};
+DualCameraPreview.disable(() => {
+  console.log("Dual mode disabled");
+});
 ```
