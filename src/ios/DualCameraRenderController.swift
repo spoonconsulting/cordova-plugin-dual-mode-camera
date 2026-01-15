@@ -9,12 +9,14 @@ class DualCameraRenderController {
     private var session: AVCaptureMultiCamSession?
     private var sessionManager: DualCameraSessionManager?
     private weak var dualCameraPreview: DualCameraPreview?
+    private var lastAppliedOrientation: UIDeviceOrientation = .portrait
 
     func setupPreview(on view: UIView, session: AVCaptureMultiCamSession, sessionManager: DualCameraSessionManager, dualCameraPreview: DualCameraPreview) {
         self.containerView = view
         self.session = session
         self.sessionManager = sessionManager
         self.dualCameraPreview = dualCameraPreview
+        self.lastAppliedOrientation = OrientationHelper.validDeviceOrientation()
         session.beginConfiguration()
         setupBackPreviewLayer(on: view, session: session)
         setupPiPView(on: view)
@@ -45,6 +47,13 @@ class DualCameraRenderController {
         if let dualCameraPreview = dualCameraPreview, dualCameraPreview.isCurrentlyRecording {
             return
         }
+        
+        let currentOrientation = OrientationHelper.validDeviceOrientation()
+        guard currentOrientation != lastAppliedOrientation else {
+            return
+        }
+        
+        lastAppliedOrientation = currentOrientation
         
         guard let containerView = containerView,
               let session = session,
