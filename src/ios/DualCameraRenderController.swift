@@ -11,21 +11,48 @@ class DualCameraRenderController {
     private var session: AVCaptureMultiCamSession?
     private var sessionManager: DualCameraSessionManager?
     private weak var dualCameraPreview: DualCameraPreview?
+    private var boundsObservation: NSKeyValueObservation?
 
     func setupPreview(on view: UIView, session: AVCaptureMultiCamSession, sessionManager: DualCameraSessionManager, dualCameraPreview: DualCameraPreview, completion: (() -> Void)? = nil) {
         self.containerView = view
         self.session = session
         self.sessionManager = sessionManager
         self.dualCameraPreview = dualCameraPreview
+        
+        view.layoutIfNeeded()
         session.beginConfiguration()
         setupBackPreviewLayer(on: view, session: session)
         setupPiPView(on: view)
         setupFrontPreviewLayer(session: session)
         session.commitConfiguration()
-        completion?()
+        
+        boundsObservation = view.observe(\.bounds, options: [.new]) { [weak self] _, _ in
+            self?.updateLayerFrames()
+        }
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.updateLayerFrames()
+            completion?()
+        }
+    }
+    
+    func updateLayerFrames() {
+        guard let containerView = containerView else { return }
+        
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        backPreviewLayer?.frame = containerView.bounds
+        if let pipView = pipView {
+            frontPreviewLayer?.frame = pipView.bounds
+        }
+        
+        CATransaction.commit()
     }
 
     func teardownPreview() {
+        boundsObservation?.invalidate()
+        boundsObservation = nil
+        
         backPreviewConnection = nil
         frontPreviewConnection = nil
         backPreviewLayer?.removeFromSuperlayer()

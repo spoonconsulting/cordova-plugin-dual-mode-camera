@@ -129,6 +129,10 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
             }
             
             self.isMixerReady = false
+            self.videoMixer.reset()
+            self.latestBackBuffer = nil
+            self.latestFrontBuffer = nil
+            self.hasAppendedFirstFrame = false
             
             DispatchQueue.main.async {
                 completion?()

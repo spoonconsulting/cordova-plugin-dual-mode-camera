@@ -10,9 +10,10 @@ class VideoRecorder {
     private var startTime: CMTime?
     private var outputURL: URL?
     private var completionHandler: ((String, String?, Error?) -> Void)?
-    private let writerQueue = DispatchQueue(label: "video.recorder.queue", qos: .userInteractive) // Higher priority
+    private let writerQueue = DispatchQueue(label: "video.recorder.queue", qos: .userInteractive)
     private let stateQueue = DispatchQueue(label: "video.recorder.state", qos: .userInteractive)
     private var _isWriting = false
+    private var videoTransform: CGAffineTransform = .identity
 
     private func resetState() {
         assetWriter = nil
@@ -22,6 +23,7 @@ class VideoRecorder {
         startTime = nil
         outputURL = nil
         completionHandler = nil
+        videoTransform = .identity
     }
 
     private func makeWriter(at url: URL) throws -> AVAssetWriter {
@@ -33,7 +35,7 @@ class VideoRecorder {
         return (isLandscape ? 1920 : 1080, isLandscape ? 1080 : 1920)
     }
 
-    private func addVideoInput(to writer: AVAssetWriter, width: Int32, height: Int32) -> Bool {
+    private func addVideoInput(to writer: AVAssetWriter, width: Int32, height: Int32, transform: CGAffineTransform) -> Bool {
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -49,6 +51,7 @@ class VideoRecorder {
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         input.expectsMediaDataInRealTime = true
         input.performsMultiPassEncodingIfSupported = false
+        input.transform = transform
 
         let sourcePixelBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
@@ -83,7 +86,7 @@ class VideoRecorder {
         return true
     }
 
-    func startWriting(audioEnabled: Bool, recordingOrientation: UIDeviceOrientation? = nil, completion: @escaping (Error?) -> Void) {
+    func startWriting(audioEnabled: Bool, recordingOrientation: UIDeviceOrientation? = nil, videoTransform: CGAffineTransform? = nil, completion: @escaping (Error?) -> Void) {
         writerQueue.async { [weak self] in
             guard let self = self else {
                 completion(NSError(domain: "VideoRecorder", code: 1000, userInfo: [NSLocalizedDescriptionKey: "VideoRecorder deallocated"]))
@@ -109,19 +112,12 @@ class VideoRecorder {
                 self.outputURL = outputDirectory.appendingPathComponent(fileName)
                 let writer = try self.makeWriter(at: self.outputURL!)
                 self.assetWriter = writer
-                let orientationToUse = recordingOrientation ?? UIDevice.current.orientation
-                let validOrientation: UIDeviceOrientation
-                switch orientationToUse {
-                case .portrait, .landscapeLeft, .landscapeRight:
-                    validOrientation = orientationToUse
-                case .portraitUpsideDown, .faceUp, .faceDown, .unknown:
-                    validOrientation = .portrait
-                @unknown default:
-                    validOrientation = .portrait
-                }
-                let (videoWidth, videoHeight) = self.videoDimensions(for: validOrientation)
+                let (videoWidth, videoHeight) = self.videoDimensions(for: .portrait)
+                let orientationToUse = recordingOrientation ?? OrientationHelper.shared.currentDeviceOrientation
+                let transformToApply = videoTransform ?? OrientationHelper.shared.videoTransform(for: orientationToUse)
+                self.videoTransform = transformToApply
 
-                guard self.addVideoInput(to: writer, width: videoWidth, height: videoHeight) else {
+                guard self.addVideoInput(to: writer, width: videoWidth, height: videoHeight, transform: transformToApply) else {
                     completion(NSError(domain: "VideoRecorder", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Failed to add video input"]))
                     return
                 }
@@ -183,7 +179,6 @@ class VideoRecorder {
     }
 
     func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
-        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         writerQueue.async { [weak self] in
             guard let self = self else { return }
             

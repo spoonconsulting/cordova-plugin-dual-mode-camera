@@ -68,6 +68,7 @@ import CoreLocation
                 }
 
                 DispatchQueue.main.async {
+                    OrientationHelper.shared.startTrackingOrientation()
                     DualCameraPreview.shouldLockOrientation = true
                     if #available(iOS 16.0, *) {
                         let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
@@ -78,13 +79,13 @@ import CoreLocation
                     UIViewController.attemptRotationToDeviceOrientation()
                     
                     if let container = self.webView.superview {
-                        previewBuilder.setupPreview(on: container, session: sessionManager.session, sessionManager: sessionManager, dualCameraPreview: self) {
+                        previewBuilder.setupPreview(on: container, session: sessionManager.session, sessionManager: sessionManager, dualCameraPreview: self, completion: {
                             sessionManager.startSession()
                             self.isSessionEnabled = true
                             
                             let pluginResult = CDVPluginResult(status: .ok, messageAs: "Dual mode enabled successfully")
                             self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
-                        }
+                        })
                     } else {
                         let pluginResult = CDVPluginResult(status: .error, messageAs: "Container view not set")
                         self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
@@ -126,6 +127,7 @@ import CoreLocation
 
     private func disableCompletion(command: CDVInvokedUrlCommand) {
         DispatchQueue.main.async {
+            OrientationHelper.shared.stopTrackingOrientation()
             DualCameraPreview.shouldLockOrientation = false
             UIViewController.attemptRotationToDeviceOrientation()
             
@@ -302,7 +304,7 @@ import CoreLocation
            let context = CIContext()
            guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
 
-           let orientation = getImageOrientationForCapture(connection: nil)
+           let orientation = OrientationHelper.shared.imageOrientationForCapture(connection: nil)
            let image = UIImage(cgImage: cgImage, scale: UIScreen.main.scale, orientation: orientation)
 
            if output == manager.backOutput {
@@ -312,8 +314,10 @@ import CoreLocation
            }
 
            if let front = latestFrontImage, let back = latestBackImage, let completion = captureCompletion {
+               // Capture the current device orientation at the moment of capture
+               let captureOrientation = OrientationHelper.shared.currentDeviceOrientation
                let merged = mergeImages(background: back, overlay: front)
-               let finalImage = rotateImageToPortrait(merged)
+               let finalImage = OrientationHelper.shared.rotateImage(merged, for: captureOrientation)
                DispatchQueue.main.async {
                    completion(finalImage, nil)
                    self.captureCompletion = nil
@@ -322,45 +326,6 @@ import CoreLocation
                }
             }
         }
-    }
-
-    private func rotateImageToPortrait(_ image: UIImage) -> UIImage {
-        let size = CGSize(width: image.size.height, height: image.size.width)
-        UIGraphicsBeginImageContextWithOptions(size, false, image.scale)
-        guard let context = UIGraphicsGetCurrentContext() else { return image }
-        context.translateBy(x: 0, y: size.height)
-        context.rotate(by: -.pi / 2)
-        image.draw(in: CGRect(x: 0, y: 0, width: image.size.width, height: image.size.height))
-        let rotatedImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return rotatedImage ?? image
-    }
-
-    private func imageOrientation(for videoOrientation: AVCaptureVideoOrientation) -> UIImage.Orientation {
-        switch videoOrientation {
-        case .portrait:
-            return .up
-        case .portraitUpsideDown:
-            return .down
-        case .landscapeRight:
-            return .right
-        case .landscapeLeft:
-            return .left
-        @unknown default:
-            return .up
-        }
-    }
-
-    private func getImageOrientationForCapture(connection: AVCaptureConnection?) -> UIImage.Orientation {
-        if let connection = connection {
-            return imageOrientation(for: connection.videoOrientation)
-        } else {
-            return .right
-        }
-    }
-
-    private func getImageOrientationFromConnection(_ connection: AVCaptureConnection) -> UIImage.Orientation {
-        return imageOrientation(for: connection.videoOrientation)
     }
 
     func mergeImages(background: UIImage, overlay: UIImage) -> UIImage {
@@ -468,9 +433,10 @@ import CoreLocation
         self.recordingCompletion = completion
         self.isRecording = true
         
-
-        let recordingOrientation = getValidRecordingOrientation()
-        self.videoRecorder?.startWriting(audioEnabled: recordWithAudio, recordingOrientation: recordingOrientation) { [weak self] error in
+        // Use OrientationHelper's valid orientation (already handles invalid orientations)
+        let recordingOrientation = OrientationHelper.shared.currentDeviceOrientation
+        let videoTransform = OrientationHelper.shared.videoTransform(for: recordingOrientation)
+        self.videoRecorder?.startWriting(audioEnabled: recordWithAudio, recordingOrientation: recordingOrientation, videoTransform: videoTransform) { [weak self] error in
             guard let self = self else { return }
 
             if let error = error {
@@ -496,10 +462,6 @@ import CoreLocation
                 )
             }
         }
-    }
-    
-    private func getValidRecordingOrientation() -> UIDeviceOrientation {
-        return .portrait
     }
     
     @objc(stopVideoCapture:)
