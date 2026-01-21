@@ -112,9 +112,9 @@ class VideoRecorder {
                 let orientationToUse = recordingOrientation ?? UIDevice.current.orientation
                 let validOrientation: UIDeviceOrientation
                 switch orientationToUse {
-                case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
+                case .portrait, .landscapeLeft, .landscapeRight:
                     validOrientation = orientationToUse
-                case .faceUp, .faceDown, .unknown:
+                case .portraitUpsideDown, .faceUp, .faceDown, .unknown:
                     validOrientation = .portrait
                 @unknown default:
                     validOrientation = .portrait

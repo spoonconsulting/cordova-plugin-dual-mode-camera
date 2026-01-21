@@ -3,6 +3,7 @@ import AVFoundation
 import CoreLocation
 
 @objc(DualCameraPreview) class DualCameraPreview: CDVPlugin, DualCameraSessionManagerDelegate {
+    static var shouldLockOrientation = false
     private var sessionManager: DualCameraSessionManager?
     private var previewBuilder: DualCameraRenderController?
     private var latestBackImage: UIImage?
@@ -67,26 +68,28 @@ import CoreLocation
                 }
 
                 DispatchQueue.main.async {
-                    NotificationCenter.default.addObserver(
-                        self,
-                        selector: #selector(self.handleOrientationChange),
-                        name: UIDevice.orientationDidChangeNotification,
-                        object: nil
-                    )
-
+                    DualCameraPreview.shouldLockOrientation = true
+                    if #available(iOS 16.0, *) {
+                        let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+                        windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                    } else {
+                        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+                    }
+                    UIViewController.attemptRotationToDeviceOrientation()
+                    
                     if let container = self.webView.superview {
-                        previewBuilder.setupPreview(on: container, session: sessionManager.session, sessionManager: sessionManager, dualCameraPreview: self)
+                        previewBuilder.setupPreview(on: container, session: sessionManager.session, sessionManager: sessionManager, dualCameraPreview: self) {
+                            sessionManager.startSession()
+                            self.isSessionEnabled = true
+                            
+                            let pluginResult = CDVPluginResult(status: .ok, messageAs: "Dual mode enabled successfully")
+                            self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
+                        }
                     } else {
                         let pluginResult = CDVPluginResult(status: .error, messageAs: "Container view not set")
                         self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
                         return
                     }
-
-                    sessionManager.startSession()
-                    self.isSessionEnabled = true
-                    
-                    let pluginResult = CDVPluginResult(status: .ok, messageAs: "Dual mode enabled successfully")
-                    self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
                 }
             }
         }
@@ -115,7 +118,6 @@ import CoreLocation
                     guard let self = self else { return }
                     self.disableCompletion(command: command)
                 }
-                sessionManager.videoMixer.unlockOrientation()
             } else {
                 self.disableCompletion(command: command)
             }
@@ -124,7 +126,8 @@ import CoreLocation
 
     private func disableCompletion(command: CDVInvokedUrlCommand) {
         DispatchQueue.main.async {
-            NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+            DualCameraPreview.shouldLockOrientation = false
+            UIViewController.attemptRotationToDeviceOrientation()
             
             self.previewBuilder?.teardownPreview()
             self.sessionManager = nil
@@ -310,12 +313,7 @@ import CoreLocation
 
            if let front = latestFrontImage, let back = latestBackImage, let completion = captureCompletion {
                let merged = mergeImages(background: back, overlay: front)
-               let finalImage: UIImage
-               if !UIDevice.current.orientation.isLandscape {
-                   finalImage = rotateImageToPortrait(merged)
-               } else {
-                   finalImage = merged
-               }
+               let finalImage = rotateImageToPortrait(merged)
                DispatchQueue.main.async {
                    completion(finalImage, nil)
                    self.captureCompletion = nil
@@ -354,24 +352,10 @@ import CoreLocation
     }
 
     private func getImageOrientationForCapture(connection: AVCaptureConnection?) -> UIImage.Orientation {
-        let deviceOrientation = UIDevice.current.orientation
-        let isLandscape = deviceOrientation == .landscapeLeft || deviceOrientation == .landscapeRight
-        
-        if !isLandscape {
-            if let connection = connection {
-                return imageOrientation(for: connection.videoOrientation)
-            } else {
-                return .right
-            }
-        }
-            
-        switch deviceOrientation {
-        case .landscapeLeft:
-            return .up
-        case .landscapeRight:
-            return .down
-        default:
-            return .up
+        if let connection = connection {
+            return imageOrientation(for: connection.videoOrientation)
+        } else {
+            return .right
         }
     }
 
@@ -381,8 +365,6 @@ import CoreLocation
 
     func mergeImages(background: UIImage, overlay: UIImage) -> UIImage {
         let size = background.size
-        let deviceOrientation = UIDevice.current.orientation
-        let isLandscape = deviceOrientation == .landscapeLeft || deviceOrientation == .landscapeRight
         let padding: CGFloat = 16
         var overlayWidth: CGFloat
         var overlayHeight: CGFloat
@@ -391,17 +373,10 @@ import CoreLocation
         overlayWidth = size.width * 0.3
         overlayHeight = overlay.size.height * (overlayWidth / overlay.size.width)
 
-        if isLandscape {
-            overlayRect = CGRect(x: padding,
-                                 y: padding,
-                                 width: overlayWidth,
-                                 height: overlayHeight)
-        } else {
-            overlayRect = CGRect(x: size.width - overlayWidth - padding,
-                                 y: padding,
-                                 width: overlayWidth,
-                                 height: overlayHeight)
-        }
+        overlayRect = CGRect(x: size.width - overlayWidth - padding,
+                             y: padding,
+                             width: overlayWidth,
+                             height: overlayHeight)
 
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         background.draw(in: CGRect(origin: .zero, size: size))
@@ -524,16 +499,7 @@ import CoreLocation
     }
     
     private func getValidRecordingOrientation() -> UIDeviceOrientation {
-        let currentOrientation = UIDevice.current.orientation
-        
-        switch currentOrientation {
-        case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
-            return currentOrientation
-        case .faceUp, .faceDown, .unknown:
-            return .portrait
-        @unknown default:
-            return .portrait
-        }
+        return .portrait
     }
     
     @objc(stopVideoCapture:)
@@ -630,26 +596,6 @@ import CoreLocation
         }
     }
     
-    @objc private func handleOrientationChange() {
-        guard isSessionEnabled,
-              let sessionManager = sessionManager,
-              sessionManager.isReady() else {
-            return
-        }
-
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            if self.isRecording {
-                let isLandscape = UIDevice.current.orientation.isLandscape
-                if isLandscape {
-                    sessionManager.videoMixer.pipFrame = CGRect(x: 0.03, y: 0.03, width: 0.25, height: 0.25)
-                } else {
-                    sessionManager.videoMixer.pipFrame = CGRect(x: 0.05, y: 0.05, width: 0.3, height: 0.3)
-                }
-            }
-        }
-    }
 
     private var isSessionEnabled: Bool {
         get { stateQueue.sync { _isSessionEnabled } }
@@ -663,5 +609,21 @@ import CoreLocation
     
     var isCurrentlyRecording: Bool {
         stateQueue.sync { _isRecording }
+    }
+}
+
+extension CDVViewController {
+    open override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        if DualCameraPreview.shouldLockOrientation {
+            return .portrait
+        }
+        return super.supportedInterfaceOrientations
+    }
+    
+    open override var shouldAutorotate: Bool {
+        if DualCameraPreview.shouldLockOrientation {
+            return false
+        }
+        return super.shouldAutorotate
     }
 }

@@ -75,9 +75,9 @@ class VideoMixer {
     func lockOrientation() {
         let currentOrientation = UIDevice.current.orientation
         switch currentOrientation {
-        case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
+        case .portrait, .landscapeLeft, .landscapeRight:
             lockedOrientation = currentOrientation
-        case .faceUp, .faceDown, .unknown:
+        case .portraitUpsideDown, .faceUp, .faceDown, .unknown:
             lockedOrientation = .portrait
         @unknown default:
             lockedOrientation = .portrait
@@ -160,9 +160,9 @@ class VideoMixer {
         
         let validOrientation: UIDeviceOrientation
         switch orientationToUse {
-        case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
+        case .portrait, .landscapeLeft, .landscapeRight:
             validOrientation = orientationToUse
-        case .faceUp, .faceDown, .unknown:
+        case .portraitUpsideDown, .faceUp, .faceDown, .unknown:
             validOrientation = .portrait
         @unknown default:
             validOrientation = .portrait
