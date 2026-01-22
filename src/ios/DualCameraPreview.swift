@@ -3,7 +3,6 @@ import AVFoundation
 import CoreLocation
 
 @objc(DualCameraPreview) class DualCameraPreview: CDVPlugin, DualCameraSessionManagerDelegate {
-    static var shouldLockOrientation = false
     private var sessionManager: DualCameraSessionManager?
     private var previewBuilder: DualCameraRenderController?
     private var latestBackImage: UIImage?
@@ -69,15 +68,6 @@ import CoreLocation
 
                 DispatchQueue.main.async {
                     OrientationHelper.shared.startTrackingOrientation()
-                    DualCameraPreview.shouldLockOrientation = true
-                    if #available(iOS 16.0, *) {
-                        let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-                        windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-                    } else {
-                        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-                    }
-                    UIViewController.attemptRotationToDeviceOrientation()
-                    
                     if let container = self.webView.superview {
                         previewBuilder.setupPreview(on: container, session: sessionManager.session, sessionManager: sessionManager, dualCameraPreview: self, completion: {
                             sessionManager.startSession()
@@ -128,9 +118,6 @@ import CoreLocation
     private func disableCompletion(command: CDVInvokedUrlCommand) {
         DispatchQueue.main.async {
             OrientationHelper.shared.stopTrackingOrientation()
-            DualCameraPreview.shouldLockOrientation = false
-            UIViewController.attemptRotationToDeviceOrientation()
-            
             self.previewBuilder?.teardownPreview()
             self.sessionManager = nil
             self.previewBuilder = nil
@@ -574,18 +561,3 @@ import CoreLocation
     }
 }
 
-extension CDVViewController {
-    open override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        if DualCameraPreview.shouldLockOrientation {
-            return .portrait
-        }
-        return super.supportedInterfaceOrientations
-    }
-    
-    open override var shouldAutorotate: Bool {
-        if DualCameraPreview.shouldLockOrientation {
-            return false
-        }
-        return super.shouldAutorotate
-    }
-}
