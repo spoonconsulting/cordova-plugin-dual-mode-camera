@@ -351,7 +351,6 @@ import CoreLocation
     
     @objc(startVideoCapture:)
      func startVideoCapture(_ command: CDVInvokedUrlCommand) {
-        
         guard let options = command.arguments.first as? [String: Any] else {
             let errorResult = CDVPluginResult(status: .error, messageAs: "Missing options")!
             self.commandDelegate.send(errorResult, callbackId: command.callbackId)
@@ -410,7 +409,6 @@ import CoreLocation
         duration: Int,
         completion: @escaping (String, String?, Error?) -> Void
     ) {
-        
         guard !isRecording else {
             completion("", nil, NSError(domain: "DualCamera", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Already recording"]))
             return

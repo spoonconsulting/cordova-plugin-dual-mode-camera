@@ -306,8 +306,8 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
 
     private func configureCamera(_ device: AVCaptureDevice, desiredWidth: Int32, desiredHeight: Int32) {
         guard let matchingFormat = device.formats.first(where: {
-            let dims = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
-            return dims.width == desiredWidth && dims.height == desiredHeight
+            let dimensions = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+            return dimensions.width == desiredWidth && dimensions.height == desiredHeight
         }) else {
             print("No matching format \(desiredWidth)x\(desiredHeight) for \(device.localizedName)")
             return
