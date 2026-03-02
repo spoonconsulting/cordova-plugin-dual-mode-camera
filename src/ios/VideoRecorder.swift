@@ -10,11 +10,83 @@ class VideoRecorder {
     private var startTime: CMTime?
     private var outputURL: URL?
     private var completionHandler: ((String, String?, Error?) -> Void)?
-    private let writerQueue = DispatchQueue(label: "video.recorder.queue", qos: .userInitiated)
-    private let stateLock = NSLock()
+    private let writerQueue = DispatchQueue(label: "video.recorder.queue", qos: .userInteractive)
+    private let stateQueue = DispatchQueue(label: "video.recorder.state", qos: .userInteractive)
     private var _isWriting = false
+    private var videoTransform: CGAffineTransform = .identity
 
-    func startWriting(audioEnabled: Bool, recordingOrientation: UIDeviceOrientation? = nil, completion: @escaping (Error?) -> Void) {
+    private func resetState() {
+        assetWriter = nil
+        videoInput = nil
+        audioInput = nil
+        adaptor = nil
+        startTime = nil
+        outputURL = nil
+        completionHandler = nil
+        videoTransform = .identity
+    }
+
+    private func makeWriter(at url: URL) throws -> AVAssetWriter {
+        return try AVAssetWriter(outputURL: url, fileType: .mov)
+    }
+
+    private func videoDimensions(for orientation: UIDeviceOrientation) -> (width: Int32, height: Int32) {
+        let isLandscape = orientation.isLandscape
+        return (isLandscape ? 1920 : 1080, isLandscape ? 1080 : 1920)
+    }
+
+    private func addVideoInput(to writer: AVAssetWriter, width: Int32, height: Int32, transform: CGAffineTransform) -> Bool {
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: width,
+            AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 10_000_000,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+                AVVideoExpectedSourceFrameRateKey: 30,
+                AVVideoMaxKeyFrameIntervalKey: 30
+            ]
+        ]
+
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        input.expectsMediaDataInRealTime = true
+        input.performsMultiPassEncodingIfSupported = false
+        input.transform = transform
+
+        let sourcePixelBufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height
+        ]
+
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: sourcePixelBufferAttributes)
+        guard writer.canAdd(input) else { return false }
+        
+        writer.add(input)
+        self.videoInput = input
+        self.adaptor = adaptor
+        return true
+    }
+
+    private func addAudioInput(to writer: AVAssetWriter) -> Bool {
+        let audioSettings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: 48000,
+            AVEncoderBitRateKey: 96000
+        ]
+
+        let input = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+        input.expectsMediaDataInRealTime = true
+
+        guard writer.canAdd(input) else { return false }
+        writer.add(input)
+
+        self.audioInput = input
+        return true
+    }
+
+    func startWriting(audioEnabled: Bool, recordingOrientation: UIDeviceOrientation? = nil, videoTransform: CGAffineTransform? = nil, completion: @escaping (Error?) -> Void) {
         writerQueue.async { [weak self] in
             guard let self = self else {
                 completion(NSError(domain: "VideoRecorder", code: 1000, userInfo: [NSLocalizedDescriptionKey: "VideoRecorder deallocated"]))
@@ -26,6 +98,7 @@ class VideoRecorder {
                 return
             }
 
+            self.resetState()
             do {
                 let outputDirectory = try FileManager.default.url(
                     for: .libraryDirectory,
@@ -35,69 +108,37 @@ class VideoRecorder {
                 ).appendingPathComponent("NoCloud", isDirectory: true)
 
                 try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-
                 let fileName = UUID().uuidString + ".mov"
                 self.outputURL = outputDirectory.appendingPathComponent(fileName)
-                self.assetWriter = try AVAssetWriter(outputURL: self.outputURL!, fileType: .mov)
-                let orientationToUse = recordingOrientation ?? UIDevice.current.orientation
-                
-                let validOrientation: UIDeviceOrientation
-                switch orientationToUse {
-                case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
-                    validOrientation = orientationToUse
-                case .faceUp, .faceDown, .unknown:
-                    validOrientation = .portrait
-                @unknown default:
-                    validOrientation = .portrait
-                }
-                
-                let isLandscape = validOrientation.isLandscape
-                let videoWidth = isLandscape ? 1920 : 1080
-                let videoHeight = isLandscape ? 1080 : 1920
+                let writer = try self.makeWriter(at: self.outputURL!)
+                self.assetWriter = writer
+                let (videoWidth, videoHeight) = self.videoDimensions(for: .portrait)
+                let orientationToUse = recordingOrientation ?? OrientationHelper.shared.currentDeviceOrientation
+                let transformToApply = videoTransform ?? OrientationHelper.shared.videoTransform(for: orientationToUse)
+                self.videoTransform = transformToApply
 
-                let videoSettings: [String: Any] = [
-                    AVVideoCodecKey: AVVideoCodecType.h264,
-                    AVVideoWidthKey: videoWidth,
-                    AVVideoHeightKey: videoHeight
-                ]
-
-                self.videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-                self.videoInput?.expectsMediaDataInRealTime = true
-
-                let sourcePixelBufferAttributes: [String: Any] = [
-                    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-                    kCVPixelBufferWidthKey as String: videoWidth,
-                    kCVPixelBufferHeightKey as String: videoHeight
-                ]
-
-                self.adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: self.videoInput!, sourcePixelBufferAttributes: sourcePixelBufferAttributes)
-
-                guard let writer = self.assetWriter, let vInput = self.videoInput else {
-                    completion(NSError(domain: "VideoRecorder", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize AVAssetWriter"]))
+                guard self.addVideoInput(to: writer, width: videoWidth, height: videoHeight, transform: transformToApply) else {
+                    completion(NSError(domain: "VideoRecorder", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Failed to add video input"]))
                     return
                 }
 
-                if writer.canAdd(vInput) {
-                    writer.add(vInput)
-                }
-
                 if audioEnabled {
-                    let audioSettings: [String: Any] = [
-                        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                        AVNumberOfChannelsKey: 1,
-                        AVSampleRateKey: 44100,
-                        AVEncoderBitRateKey: 64000
-                    ]
-
-                    self.audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
-                    self.audioInput?.expectsMediaDataInRealTime = true
-
-                    if let aInput = self.audioInput, writer.canAdd(aInput) {
-                        writer.add(aInput)
+                    guard self.addAudioInput(to: writer) else {
+                        completion(NSError(domain: "VideoRecorder", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Failed to add audio input"]))
+                        return
                     }
                 }
                 
-                print("VideoRecorder: Writer initialized at \(self.outputURL!.path)")
+                guard writer.startWriting() else {
+                    let err = writer.error
+                    DispatchQueue.main.async {
+                        completion(err ?? NSError(domain: "VideoRecorder",
+                                                code: 1003,
+                                                userInfo: [NSLocalizedDescriptionKey: "Failed to start writing"]))
+                    }
+                    return
+                 }
+                
                 self.isWriting = true
                 self.completionHandler = nil
                 
@@ -117,14 +158,16 @@ class VideoRecorder {
         writerQueue.async { [weak self] in
             guard let self = self else { return }
             
-            guard self.isWriting,
-                  let writer = self.assetWriter,
-                  writer.status == .unknown || writer.status == .writing,
-                  let vInput = self.videoInput,
-                  let adaptor = self.adaptor else { return }
+            guard self.isWriting else { return }
+            
+            guard let writer = self.assetWriter else { return }
+            
+            
+            guard writer.status == .writing else { return }
+            
+            guard let vInput = self.videoInput, let adaptor = self.adaptor else { return }
 
-            if writer.status == .unknown {
-                writer.startWriting()
+            if self.startTime == nil {
                 writer.startSession(atSourceTime: presentationTime)
                 self.startTime = presentationTime
             }
@@ -139,13 +182,18 @@ class VideoRecorder {
         writerQueue.async { [weak self] in
             guard let self = self else { return }
             
-            guard self.isWriting,
-                  let aInput = self.audioInput,
-                  aInput.isReadyForMoreMediaData,
-                  let writer = self.assetWriter,
-                  writer.status == .writing else { return }
+            
+            guard self.isWriting else { return }
+            
+            guard let writer = self.assetWriter else { return }
+            
+            guard let aInput = self.audioInput else { return }
+            
+            guard writer.status == .writing, self.startTime != nil else { return }
 
-            aInput.append(sampleBuffer)
+            if aInput.isReadyForMoreMediaData {
+                aInput.append(sampleBuffer)
+            }
         }
     }
 
@@ -161,6 +209,7 @@ class VideoRecorder {
                 return
             }
 
+            
             self.isWriting = false
             self.completionHandler = completion
 
@@ -169,6 +218,7 @@ class VideoRecorder {
 
             writer.finishWriting { [weak self] in
                 guard let self = self else { return }
+
 
                 if let error = writer.error {
                     DispatchQueue.main.async {
@@ -184,9 +234,11 @@ class VideoRecorder {
                     return
                 }
 
+                
                 self.generateThumbnail(from: URL(fileURLWithPath: videoPath)) { thumbnailPath in
                     DispatchQueue.main.async {
                         self.completionHandler?(videoPath, thumbnailPath, nil)
+                        self.resetState()
                     }
                 }
             }
@@ -223,16 +275,7 @@ class VideoRecorder {
     }
 
     private var isWriting: Bool {
-        get {
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            return _isWriting
-        }
-
-        set {
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            _isWriting = newValue
-        }
+        get { stateQueue.sync { _isWriting } }
+        set { stateQueue.sync { _isWriting = newValue } }
     }
 }
