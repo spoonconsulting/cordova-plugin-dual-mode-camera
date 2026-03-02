@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<plugin id="@spoonconsulting/cordova-plugin-dual-mode-camera" version="1.0.2" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+<plugin id="@spoonconsulting/cordova-plugin-dual-mode-camera" version="1.0.3" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
 
     <name>cordova-plugin-dual-mode</name>
     <description>Cordova plugin that allows users to use both front and back camera at the same time</description>
@@ -14,7 +14,6 @@
     </js-module>
 
     <platform name="android">
-
     </platform>
 
     <platform name="ios">
@@ -38,6 +37,7 @@
     <source-file src="src/ios/DualCameraRenderController.swift" />
     <source-file src="src/ios/VideoRecorder.swift" />
     <source-file src="src/ios/VideoMixer.swift" />
+    <source-file src="src/ios/OrientationHelper.swift" />
 
     <framework src="ImageIO.framework" weak="true" />
     <framework src="MobileCoreServices.framework" />

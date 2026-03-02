@@ -73,15 +73,7 @@ class VideoMixer {
     }
     
     func lockOrientation() {
-        let currentOrientation = UIDevice.current.orientation
-        switch currentOrientation {
-        case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
-            lockedOrientation = currentOrientation
-        case .faceUp, .faceDown, .unknown:
-            lockedOrientation = .portrait
-        @unknown default:
-            lockedOrientation = .portrait
-        }
+        lockedOrientation = OrientationHelper.shared.currentDeviceOrientation
     }
 
     func unlockOrientation() {
@@ -156,37 +148,15 @@ class VideoMixer {
     }
     
     private func getAdjustedPipFrame(for fullScreenTexture: MTLTexture) -> CGRect {
-        let orientationToUse = lockedOrientation ?? UIDevice.current.orientation
-        
-        let validOrientation: UIDeviceOrientation
-        switch orientationToUse {
-        case .portrait, .portraitUpsideDown, .landscapeLeft, .landscapeRight:
-            validOrientation = orientationToUse
-        case .faceUp, .faceDown, .unknown:
-            validOrientation = .portrait
-        @unknown default:
-            validOrientation = .portrait
-        }
-        
-        let isLandscape = validOrientation.isLandscape
         let textureWidth = Float(fullScreenTexture.width)
         let textureHeight = Float(fullScreenTexture.height)
         
-        if isLandscape {
-            let pipWidth = textureWidth * Float(pipFrame.size.width)
-            let pipHeight = textureHeight * Float(pipFrame.size.height)
-            let pipX = textureWidth * Float(pipFrame.origin.x)
-            let pipY = textureHeight * Float(pipFrame.origin.y)
-            
-            return CGRect(x: CGFloat(pipX), y: CGFloat(pipY), width: CGFloat(pipWidth), height: CGFloat(pipHeight))
-        } else {
-            let pipWidth = textureWidth * Float(pipFrame.size.width)
-            let pipHeight = textureHeight * Float(pipFrame.size.height)
-            let pipX = textureWidth * Float(pipFrame.origin.x)
-            let pipY = textureHeight * Float(pipFrame.origin.y)
-            
-            return CGRect(x: CGFloat(pipX), y: CGFloat(pipY), width: CGFloat(pipWidth), height: CGFloat(pipHeight))
-        }
+        let pipWidth = textureWidth * Float(pipFrame.size.width)
+        let pipHeight = textureHeight * Float(pipFrame.size.height)
+        let pipX = textureWidth * Float(pipFrame.origin.x)
+        let pipY = textureHeight * Float(pipFrame.origin.y)
+        
+        return CGRect(x: CGFloat(pipX), y: CGFloat(pipY), width: CGFloat(pipWidth), height: CGFloat(pipHeight))
     }
     
     private func makeTextureFromCVPixelBuffer(pixelBuffer: CVPixelBuffer) -> MTLTexture? {
