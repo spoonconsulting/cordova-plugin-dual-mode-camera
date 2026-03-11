@@ -33,6 +33,8 @@ import CoreLocation
             return
         }
 
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
 
