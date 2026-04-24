@@ -14,6 +14,19 @@
     </js-module>
 
     <platform name="android">
+        <source-file src="src/android/DualCameraPreview.java" target-dir="src/com/spoon/dualcamera" />
+        <source-file src="src/android/DualCameraPreviewFragment.java" target-dir="src/com/spoon/dualcamera" />
+            <config-file target="res/xml/config.xml" parent="/*">
+                <feature name="DualCameraPreview">
+                    <param name="android-package" value="com.spoon.dualcamera.DualCameraPreview" />
+                </feature>
+            </config-file>
+
+            <config-file target="AndroidManifest.xml" parent="/manifest">
+                <uses-feature android:name="android.hardware.camera" android:required="true"/>
+                <uses-feature android:name="android.hardware.camera.autofocus" />
+                <uses-permission android:name="android.permission.CAMERA" />   
+            </config-file>
     </platform>
 
     <platform name="ios">
