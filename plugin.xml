@@ -14,19 +14,24 @@
     </js-module>
 
     <platform name="android">
-        <source-file src="src/android/DualCameraPreview.java" target-dir="src/com/spoon/dualcamera" />
-        <source-file src="src/android/DualCameraPreviewFragment.java" target-dir="src/com/spoon/dualcamera" />
-            <config-file target="res/xml/config.xml" parent="/*">
-                <feature name="DualCameraPreview">
-                    <param name="android-package" value="com.spoon.dualcamera.DualCameraPreview" />
-                </feature>
-            </config-file>
+    <source-file src="src/android/DualCameraPreview.java" target-dir="src/com/spoon/dualcamera" />
+    <source-file src="src/android/DualCameraPreviewFragment.java" target-dir="src/com/spoon/dualcamera" />
+    <config-file target="res/xml/config.xml" parent="/*">
+        <feature name="DualCameraPreview">
+            <param name="android-package" value="com.spoon.dualcamera.DualCameraPreview" />
+        </feature>
+    </config-file>
 
-            <config-file target="AndroidManifest.xml" parent="/manifest">
-                <uses-feature android:name="android.hardware.camera" android:required="true"/>
-                <uses-feature android:name="android.hardware.camera.autofocus" />
-                <uses-permission android:name="android.permission.CAMERA" />   
-            </config-file>
+    <config-file target="AndroidManifest.xml" parent="/manifest">
+        <uses-feature android:name="android.hardware.camera" android:required="true"/>
+        <uses-feature android:name="android.hardware.camera.autofocus" />
+        <uses-permission android:name="android.permission.CAMERA" />
+    </config-file>
+    <framework src="androidx.camera:camera-core:1.5.1" />
+    <framework src="androidx.camera:camera-camera2:1.5.1" />
+    <framework src="androidx.camera:camera-lifecycle:1.5.1" />
+    <framework src="androidx.camera:camera-view:1.5.1" />
+    <framework src="com.google.guava:guava:31.1-android" />
     </platform>
 
     <platform name="ios">
