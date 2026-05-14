@@ -1,9 +1,6 @@
 package com.spoon.dualcamera;
 
-import android.Manifest;
 import android.app.Activity;
-import android.content.pm.PackageManager;
-import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -16,7 +13,6 @@ import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
-import org.json.JSONException;
 
 import android.graphics.Color;
 import androidx.fragment.app.Fragment;
@@ -25,100 +21,49 @@ import androidx.camera.core.CameraInfo;
 import java.util.List;
 import com.google.common.util.concurrent.ListenableFuture;
 
-
 public class DualCameraPreview extends CordovaPlugin {
-    private static final String TAG = "DualCameraPreview";
-    private static final String ACTION_ENABLE = "enable";
+    private static final String TAG = "DualCameraPreview"; //remove
     private static final String FRAGMENT_TAG = "DualCameraPreviewFragment";
-    private static final String ACTION_DEVICE_SUPPORT_DUAL_MODE="deviceSupportDualMode";
-    private static final String ACTION_DISABLE="disable";
-    private static final String ACTION_CAPTURE="capture";
-    private static final int CAMERA_PERMISSION_REQUEST = 1001;
     private static int previewContainerId=-1;
 
-    private static CallbackContext pendingEnableCallback;
     @Override
-    public boolean execute(
-            String action,
-            JSONArray args,
-            CallbackContext callbackContext
-    ) throws JSONException {
+    public boolean execute(String action, JSONArray args, CallbackContext callbackContext){
+        try {
+            switch(action){
+                case "deviceSupportDualMode":
+                deviceSupportDualMode(callbackContext);
+                return true;
 
-        if (ACTION_ENABLE.equals(action)) {
-            enable(callbackContext);
+                case "enable":
+                enable(callbackContext);
+                return true;
+
+                case "disable":
+                disable(callbackContext);
+                return true;
+
+                case "capture":
+                capture(callbackContext);
+                return true;
+
+                default:
+                return false;
+
+            }
+        } catch (Exception e) {
+            callbackContext.error(e.getMessage());
             return true;
         }
-
-        if (ACTION_DEVICE_SUPPORT_DUAL_MODE.equals(action)) {
-            deviceSupportDualMode(callbackContext);
-            return true;
-        }
-
-        if(ACTION_DISABLE.equals(action)){
-            disable(callbackContext);
-            return true;
-        }
-
-        if(ACTION_CAPTURE.equals(action)){
-            capture(callbackContext);
-            return true;
-        }
-        return false;
     }
-
 
     private void enable(final CallbackContext callbackContext) {
         Activity activity = cordova.getActivity();
-
-        if (ContextCompat.checkSelfPermission(
-                activity,
-                Manifest.permission.CAMERA
-        ) != PackageManager.PERMISSION_GRANTED) {
-
-            pendingEnableCallback= callbackContext;
-
-            cordova.requestPermission(
-                    this,
-                    CAMERA_PERMISSION_REQUEST,
-                    Manifest.permission.CAMERA
-            );
-
-            return;
-        }
-
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 openPreviewFragment(callbackContext);
             }
         });
-    }
-
-    @Override
-    public void onRequestPermissionResult(
-            int requestCode,
-            String[] permissions,
-            int[] grantResults
-    ) throws JSONException {
-
-        Log.d(TAG,"Test on Request Permission Result");
-        if (requestCode == CAMERA_PERMISSION_REQUEST) {
-            if (grantResults.length > 0 &&
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                if (pendingEnableCallback != null) {
-                    enable(pendingEnableCallback);
-                    Log.d(TAG,"Test on Request Permission Result ACCEPT");
-                    pendingEnableCallback = null;
-                }
-
-            } else {
-                if (pendingEnableCallback != null) {
-                    pendingEnableCallback.error("Camera permission denied");
-                    pendingEnableCallback = null;
-                }
-            }
-        }
     }
 
     private void openPreviewFragment(CallbackContext callbackContext) {
@@ -133,6 +78,7 @@ public class DualCameraPreview extends CordovaPlugin {
         FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
 
         Fragment existing = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
         if (existing != null && previewContainerId != -1) {
             callbackContext.success("Dual camera preview already enabled");
             return;
@@ -157,11 +103,12 @@ public class DualCameraPreview extends CordovaPlugin {
         View cordovaWebView = webView.getView();
         cordovaWebView.setBackgroundColor(Color.TRANSPARENT);
 
+        DualCameraPreviewFragment dualFragment = new DualCameraPreviewFragment(callbackContext);
+
         fragmentManager.beginTransaction()
-                .replace(previewContainerId, new DualCameraPreviewFragment(),FRAGMENT_TAG)
+                .replace(previewContainerId,dualFragment,FRAGMENT_TAG)
                 .commitAllowingStateLoss();
 
-        callbackContext.success("Dual camera preview enabled");
     }
 
     private void disable(final CallbackContext callbackContext) {
@@ -174,7 +121,7 @@ public class DualCameraPreview extends CordovaPlugin {
                     if (!(activity instanceof FragmentActivity)) {
                         callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
                         return;
-                    }
+                    }  //remove??
 
                     FragmentActivity fragmentActivity = (FragmentActivity) activity;
                     FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
@@ -188,29 +135,23 @@ public class DualCameraPreview extends CordovaPlugin {
                     }
 
                     if (previewContainerId != -1) {
-                        Log.d("CameraX","previewContainerId" + previewContainerId);
                         View container = activity.findViewById(previewContainerId);
 
                         if (container != null) {
-                            Log.d("CameraX", "CameraX test1");
                             ViewGroup parent = (ViewGroup) container.getParent();
 
                             if (parent != null) {
-                                Log.d("CameraX", "CameraX test2");
                                 parent.removeView(container);
                             }
                         }
 
                         previewContainerId = -1;
 
-                        Log.d("CameraX","previewContainerId" + previewContainerId);
-
                     }
 
                     callbackContext.success("Dual camera preview disabled");
 
                 } catch (Exception e) {
-                    Log.e(TAG, "Failed to disable dual camera preview", e);
                     callbackContext.error(e.getMessage());
                 }
             }
@@ -219,19 +160,6 @@ public class DualCameraPreview extends CordovaPlugin {
 
     private void deviceSupportDualMode(final CallbackContext callbackContext) {
         final Activity activity = cordova.getActivity();
-
-        if (ContextCompat.checkSelfPermission(
-                activity,
-                Manifest.permission.CAMERA
-        ) != PackageManager.PERMISSION_GRANTED) {
-            Log.d("CameraX", "Camera permission not granted");
-
-            callbackContext.sendPluginResult(
-                    new PluginResult(PluginResult.Status.OK, false)
-            );
-            return;
-        }
-
         final  ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(activity);
 
@@ -253,7 +181,6 @@ public class DualCameraPreview extends CordovaPlugin {
                     );
 
                 } catch (Exception e) {
-                    Log.e(TAG, "Failed to check dual camera support", e);
                     callbackContext.error(e.getMessage());
                 }
             }
@@ -293,7 +220,6 @@ public class DualCameraPreview extends CordovaPlugin {
                     cameraFragment.capture(callbackContext);
 
                 } catch (Exception e) {
-                    Log.e(TAG, "Capture failed", e);
                     callbackContext.error(e.getMessage());
                 }
             }

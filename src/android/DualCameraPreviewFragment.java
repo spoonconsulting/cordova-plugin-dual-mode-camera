@@ -1,9 +1,6 @@
 package com.spoon.dualcamera;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -39,15 +36,19 @@ import androidx.exifinterface.media.ExifInterface;
 import android.graphics.Matrix;
 
 public class DualCameraPreviewFragment extends Fragment {
-
-    private static final String TAG = "DualCameraFragment";
+    private static final String TAG = "DualCameraFragment"; //remove
     private PreviewView backPreviewView;
     private PreviewView frontPreviewView;
     private ProcessCameraProvider cameraProvider;
     private ConcurrentCamera concurrentCamera;
-
     private ImageCapture backImageCapture;
     private ImageCapture frontImageCapture;
+
+    private CallbackContext enableCallback;
+
+    public DualCameraPreviewFragment(CallbackContext callbackContext) {
+        this.enableCallback = callbackContext;
+    }
 
     @Nullable
     @Override
@@ -59,7 +60,7 @@ public class DualCameraPreviewFragment extends Fragment {
         FrameLayout root = new FrameLayout(requireContext());
 
         backPreviewView = new PreviewView(requireContext());
-        backPreviewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
+        backPreviewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
         backPreviewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
 
         root.addView(backPreviewView, new FrameLayout.LayoutParams(
@@ -68,17 +69,17 @@ public class DualCameraPreviewFragment extends Fragment {
         ));
 
         frontPreviewView = new PreviewView(requireContext());
-        frontPreviewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
+        frontPreviewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
         frontPreviewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
 
-        int frontWidth = dpToPx(130);
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int frontWidth = Math.round(screenWidth * 0.30f);
         int frontHeight = Math.round(frontWidth * 4f / 3f);
 
         FrameLayout.LayoutParams frontParams = new FrameLayout.LayoutParams(
                 frontWidth,
                 frontHeight
         );
-
 
         frontParams.gravity = Gravity.TOP | Gravity.END;
         frontParams.topMargin = dpToPx(16);
@@ -90,22 +91,13 @@ public class DualCameraPreviewFragment extends Fragment {
     }
 
     @Override
-    public void onViewCreated(
-            @NonNull View view,
-            @Nullable Bundle savedInstanceState
+    public void onViewCreated( @NonNull View view,@Nullable Bundle savedInstanceState
     ) {
         super.onViewCreated(view, savedInstanceState);
-        startCamera();
+        startCamera(enableCallback);
     }
 
-    private void startCamera() {
-        if (ContextCompat.checkSelfPermission(
-                requireContext(),
-                Manifest.permission.CAMERA
-        ) != PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "Camera permission not granted");
-            return;
-        }
+    private void startCamera(final CallbackContext callbackContext) {
 
         ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(requireContext());
@@ -115,9 +107,15 @@ public class DualCameraPreviewFragment extends Fragment {
             public void run() {
                 try {
                     cameraProvider = future.get();
-                    bindDualCamera();
+                    bindDualCamera();  //bind the front and back cameras
+                    if (callbackContext != null) {
+                        callbackContext.success("Dual camera preview enabled");
+                    }
                 } catch (Exception e) {
-                    Log.e(TAG, "Camera provider error", e);
+                    if (callbackContext != null) {
+                        callbackContext.error(e.getMessage());
+                    }
+
                 }
             }
         }, ContextCompat.getMainExecutor(requireContext()));
@@ -125,14 +123,11 @@ public class DualCameraPreviewFragment extends Fragment {
 
     private void bindDualCamera() {
         try {
-            Log.d(TAG, "bindDualCamera started");
 
             cameraProvider.unbindAll();
 
             List<List<CameraInfo>> cameraCombinations =
                     cameraProvider.getAvailableConcurrentCameraInfos();
-
-            Log.d(TAG, "Concurrent combinations count: " + cameraCombinations.size());
 
             CameraInfo selectedFrontCameraInfo = null;
             CameraInfo selectedBackCameraInfo = null;
@@ -141,12 +136,8 @@ public class DualCameraPreviewFragment extends Fragment {
                 CameraInfo frontInThisCombination = null;
                 CameraInfo backInThisCombination = null;
 
-                Log.d(TAG, "Checking combination size: " + combination.size());
-
                 for (CameraInfo cameraInfo : combination) {
                     Integer lensFacing = cameraInfo.getLensFacing();
-
-                    Log.d(TAG, "Camera lensFacing: " + lensFacing);
 
                     if (lensFacing == null) {
                         continue;
@@ -154,7 +145,6 @@ public class DualCameraPreviewFragment extends Fragment {
 
                     if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
                         frontInThisCombination = cameraInfo;
-                        Log.d(TAG, "Checking cameraInfo: "+ cameraInfo);
 
                     } else if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                         backInThisCombination = cameraInfo;
@@ -169,7 +159,6 @@ public class DualCameraPreviewFragment extends Fragment {
             }
 
             if (selectedFrontCameraInfo == null || selectedBackCameraInfo == null) {
-                Log.e(TAG, "No valid front/back concurrent camera combination found");
                 return;
             }
 
@@ -199,7 +188,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
             List<ConcurrentCamera.SingleCameraConfig> configs = new ArrayList<>();
 
-
+            
             configs.add(new ConcurrentCamera.SingleCameraConfig(
                     selectedBackCameraInfo.getCameraSelector(),
                     backUseCaseGroup,
@@ -212,23 +201,18 @@ public class DualCameraPreviewFragment extends Fragment {
                     this
             ));
 
-            Log.d(TAG, "Concurrent configs size before bind: " + configs.size());
 
             if (configs.size() != 2) {
-                Log.e(TAG, "Invalid concurrent configs size: " + configs.size());
                 return;
             }
 
             concurrentCamera = cameraProvider.bindToLifecycle(configs);
 
-            Log.d(TAG, "Dual camera preview started");
 
         } catch (Exception e) {
             backImageCapture = null;
             frontImageCapture = null;
             concurrentCamera = null;
-
-            Log.e(TAG, "bindDualCamera failed", e);
         }
     }
 
@@ -247,7 +231,6 @@ public class DualCameraPreviewFragment extends Fragment {
     }
 
     public void capture(final CallbackContext callbackContext) {
-        Log.d(TAG, "capture called");
 
         if (!isAdded() || getContext() == null) {
             callbackContext.error("Fragment is not attached");
@@ -255,12 +238,13 @@ public class DualCameraPreviewFragment extends Fragment {
         }
 
         if (backImageCapture == null || frontImageCapture == null) {
+            callbackContext.error("ImageCapture is not ready");
             return;
         }
 
         try {
             final File filesDir = requireContext().getFilesDir();
-
+    
             final File backTempFile = new File(
                     filesDir,
                     "back_" + UUID.randomUUID().toString() + ".jpg"
@@ -276,7 +260,6 @@ public class DualCameraPreviewFragment extends Fragment {
             );
 
             captureToFile(backImageCapture, backTempFile, new CaptureFileCallback() {
-
                 @Override
                 public void onSuccess(File backFile) {
                     captureToFile(frontImageCapture, frontTempFile, new CaptureFileCallback() {
@@ -285,15 +268,13 @@ public class DualCameraPreviewFragment extends Fragment {
                             new Thread(new Runnable() {
                                 @Override
                                 public void run(){
-
                                     try {
                                         mergeImages(backFile, frontFile, finalFile);
+
                                         backFile.delete();
                                         frontFile.delete();
 
                                         final String imageNativePath = finalFile.getAbsolutePath();
-
-                                        Log.d(TAG, "Concurrent image saved: " + imageNativePath);
 
                                         requireActivity().runOnUiThread(new Runnable() {
                                             @Override
@@ -303,8 +284,6 @@ public class DualCameraPreviewFragment extends Fragment {
                                         });
 
                                     } catch (Exception e) {
-                                        Log.e(TAG, "Failed to merge images", e);
-
                                         requireActivity().runOnUiThread(new Runnable() {
                                             @Override
                                             public void run() {
@@ -315,7 +294,6 @@ public class DualCameraPreviewFragment extends Fragment {
                                 }
                             }).start();
                         }
-
                         @Override
                         public void onError(String error) {
                             backFile.delete();
@@ -323,7 +301,6 @@ public class DualCameraPreviewFragment extends Fragment {
                         }
                     });
                 }
-
                 @Override
                 public void onError(String error) {
                     callbackContext.error("Back camera capture failed: " + error);
@@ -331,7 +308,6 @@ public class DualCameraPreviewFragment extends Fragment {
             });
 
         } catch (Exception e) {
-            Log.e(TAG, "Capture exception", e);
             callbackContext.error(e.getMessage());
         }
     }
@@ -381,10 +357,7 @@ public class DualCameraPreviewFragment extends Fragment {
         void onError(String error);
     }
 
-    private void captureToFile(
-    ImageCapture capture,
-    final File file,
-    final CaptureFileCallback callback
+    private void captureToFile(ImageCapture capture, final File file, final CaptureFileCallback callback
     ) {
         ImageCapture.OutputFileOptions outputOptions =
                 new ImageCapture.OutputFileOptions.Builder(file).build();
