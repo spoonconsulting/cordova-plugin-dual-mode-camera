@@ -26,6 +26,7 @@ import org.apache.cordova.CallbackContext;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.net.Uri;
 
 import java.io.File;
 import java.io.OutputStream;
@@ -36,7 +37,6 @@ import androidx.exifinterface.media.ExifInterface;
 import android.graphics.Matrix;
 
 public class DualCameraPreviewFragment extends Fragment {
-    private static final String TAG = "DualCameraFragment"; //remove
     private PreviewView backPreviewView;
     private PreviewView frontPreviewView;
     private ProcessCameraProvider cameraProvider;
@@ -109,7 +109,7 @@ public class DualCameraPreviewFragment extends Fragment {
                     cameraProvider = future.get();
                     bindDualCamera();  //bind the front and back cameras
                     if (callbackContext != null) {
-                        callbackContext.success("Dual camera preview enabled");
+                        callbackContext.success();
                     }
                 } catch (Exception e) {
                     if (callbackContext != null) {
@@ -274,7 +274,7 @@ public class DualCameraPreviewFragment extends Fragment {
                                         backFile.delete();
                                         frontFile.delete();
 
-                                        final String imageNativePath = finalFile.getAbsolutePath();
+                                        final String imageNativePath = Uri.fromFile(finalFile).toString();
 
                                         requireActivity().runOnUiThread(new Runnable() {
                                             @Override

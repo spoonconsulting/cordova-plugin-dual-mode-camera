@@ -22,7 +22,6 @@ import java.util.List;
 import com.google.common.util.concurrent.ListenableFuture;
 
 public class DualCameraPreview extends CordovaPlugin {
-    private static final String TAG = "DualCameraPreview"; //remove
     private static final String FRAGMENT_TAG = "DualCameraPreviewFragment";
     private static int previewContainerId=-1;
 
@@ -121,7 +120,7 @@ public class DualCameraPreview extends CordovaPlugin {
                     if (!(activity instanceof FragmentActivity)) {
                         callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
                         return;
-                    }  //remove??
+                    } 
 
                     FragmentActivity fragmentActivity = (FragmentActivity) activity;
                     FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
@@ -149,7 +148,9 @@ public class DualCameraPreview extends CordovaPlugin {
 
                     }
 
-                    callbackContext.success("Dual camera preview disabled");
+                    callbackContext.sendPluginResult(
+                            new PluginResult(PluginResult.Status.OK, true)
+                    );
 
                 } catch (Exception e) {
                     callbackContext.error(e.getMessage());
