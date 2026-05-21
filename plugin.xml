@@ -29,9 +29,9 @@
     </config-file>
     <framework src="androidx.camera:camera-core:1.5.1" />
     <framework src="com.google.guava:guava:31.1-android" />
-    <framework src="androidx.media3:media3-transformer:1.10.1" />
-    <framework src="androidx.media3:media3-effect:1.10.1" />
-    <framework src="androidx.media3:media3-common:1.10.1" />
+    <framework src="androidx.media3:media3-transformer:1.8.0" />
+    <framework src="androidx.media3:media3-effect:1.8.0" />
+    <framework src="androidx.media3:media3-common:1.8.0" />
     </platform>
 
     <platform name="ios">
