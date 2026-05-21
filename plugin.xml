@@ -34,6 +34,7 @@
     <framework src="androidx.camera:camera-lifecycle:1.5.1" />
     <framework src="androidx.camera:camera-view:1.5.1" />
     <framework src="androidx.camera:camera-video:1.5.1" />
+    <framework src="io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-16kb:6.1.7"/>
     </platform>
 
     <platform name="ios">
