@@ -100,6 +100,7 @@ public class DualCameraPreviewFragment extends Fragment {
         startCamera(enableCallback);
     }
 
+
     private void startCamera(final CallbackContext callbackContext) {
         ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(requireContext());
