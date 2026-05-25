@@ -3,17 +3,14 @@ package com.spoon.dualcamera;
 import android.app.Activity;
 import android.view.View;
 import android.view.ViewGroup;
-
 import androidx.core.content.ContextCompat;
 import android.widget.FrameLayout;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
-
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
-
 import android.graphics.Color;
 import androidx.fragment.app.Fragment;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -30,23 +27,23 @@ public class DualCameraPreview extends CordovaPlugin {
         try {
             switch(action){
                 case "deviceSupportDualMode":
-                deviceSupportDualMode(callbackContext);
-                return true;
+                    deviceSupportDualMode(callbackContext);
+                    return true;
 
                 case "enable":
-                enable(callbackContext);
-                return true;
+                    enable(callbackContext);
+                    return true;
 
                 case "disable":
-                disable(callbackContext);
-                return true;
+                    disable(callbackContext);
+                    return true;
 
                 case "capture":
-                capture(callbackContext);
-                return true;
+                    capture(callbackContext);
+                    return true;
 
                 default:
-                return false;
+                    return false;
 
             }
         } catch (Exception e) {
@@ -75,7 +72,6 @@ public class DualCameraPreview extends CordovaPlugin {
 
         FragmentActivity fragmentActivity = (FragmentActivity) activity;
         FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-
         Fragment existing = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
 
         if (existing != null && previewContainerId != -1) {
@@ -107,7 +103,6 @@ public class DualCameraPreview extends CordovaPlugin {
         fragmentManager.beginTransaction()
                 .replace(previewContainerId,dualFragment,FRAGMENT_TAG)
                 .commitAllowingStateLoss();
-
     }
 
     private void disable(final CallbackContext callbackContext) {
@@ -120,7 +115,7 @@ public class DualCameraPreview extends CordovaPlugin {
                     if (!(activity instanceof FragmentActivity)) {
                         callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
                         return;
-                    } 
+                    }
 
                     FragmentActivity fragmentActivity = (FragmentActivity) activity;
                     FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
@@ -136,12 +131,8 @@ public class DualCameraPreview extends CordovaPlugin {
                     if (previewContainerId != -1) {
                         View container = activity.findViewById(previewContainerId);
 
-                        if (container != null) {
-                            ViewGroup parent = (ViewGroup) container.getParent();
-
-                            if (parent != null) {
-                                parent.removeView(container);
-                            }
+                        if (container != null && container.getParent()!=null ) {
+                            ((ViewGroup) container.getParent()).removeView(container);
                         }
 
                         previewContainerId = -1;
@@ -202,7 +193,6 @@ public class DualCameraPreview extends CordovaPlugin {
 
                     FragmentActivity fragmentActivity = (FragmentActivity) activity;
                     FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-
                     Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
 
                     if (fragment == null) {

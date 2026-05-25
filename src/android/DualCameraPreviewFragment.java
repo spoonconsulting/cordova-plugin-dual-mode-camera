@@ -59,18 +59,14 @@ public class DualCameraPreviewFragment extends Fragment {
     ) {
         FrameLayout root = new FrameLayout(requireContext());
 
-        backPreviewView = new PreviewView(requireContext());
-        backPreviewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
-        backPreviewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        backPreviewView = createPreviewView();
 
         root.addView(backPreviewView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
-        frontPreviewView = new PreviewView(requireContext());
-        frontPreviewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
-        frontPreviewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        frontPreviewView = createPreviewView();
 
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         int frontWidth = Math.round(screenWidth * 0.30f);
@@ -81,13 +77,20 @@ public class DualCameraPreviewFragment extends Fragment {
                 frontHeight
         );
 
-        frontParams.gravity = Gravity.TOP | Gravity.END;
+        frontParams.gravity = Gravity.TOP | Gravity.LEFT;
         frontParams.topMargin = dpToPx(16);
         frontParams.rightMargin = dpToPx(16);
 
         root.addView(frontPreviewView, frontParams);
 
         return root;
+    }
+
+    private PreviewView createPreviewView(){
+        PreviewView previewView = new PreviewView(requireContext());
+        previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
+        return previewView;
     }
 
     @Override
@@ -98,7 +101,6 @@ public class DualCameraPreviewFragment extends Fragment {
     }
 
     private void startCamera(final CallbackContext callbackContext) {
-
         ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(requireContext());
 
@@ -123,7 +125,6 @@ public class DualCameraPreviewFragment extends Fragment {
 
     private void bindDualCamera() {
         try {
-
             cameraProvider.unbindAll();
 
             List<List<CameraInfo>> cameraCombinations =
@@ -143,11 +144,13 @@ public class DualCameraPreviewFragment extends Fragment {
                         continue;
                     }
 
-                    if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
-                        frontInThisCombination = cameraInfo;
-
-                    } else if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                        backInThisCombination = cameraInfo;
+                    switch (lensFacing) {
+                        case CameraSelector.LENS_FACING_FRONT:
+                            frontInThisCombination = cameraInfo;
+                            break;
+                        case CameraSelector.LENS_FACING_BACK:
+                            backInThisCombination = cameraInfo;
+                            break;
                     }
                 }
 
@@ -188,7 +191,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
             List<ConcurrentCamera.SingleCameraConfig> configs = new ArrayList<>();
 
-            
+
             configs.add(new ConcurrentCamera.SingleCameraConfig(
                     selectedBackCameraInfo.getCameraSelector(),
                     backUseCaseGroup,
@@ -207,7 +210,6 @@ public class DualCameraPreviewFragment extends Fragment {
             }
 
             concurrentCamera = cameraProvider.bindToLifecycle(configs);
-
 
         } catch (Exception e) {
             backImageCapture = null;
@@ -244,7 +246,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
         try {
             final File filesDir = requireContext().getFilesDir();
-    
+
             final File backTempFile = new File(
                     filesDir,
                     "back_" + UUID.randomUUID().toString() + ".jpg"
@@ -316,6 +318,8 @@ public class DualCameraPreviewFragment extends Fragment {
         Bitmap backBitmap = decodeBitmapWithCorrectOrientation(backFile);
         Bitmap frontBitmap = decodeBitmapWithCorrectOrientation(frontFile);
 
+        frontBitmap = flipFront(frontBitmap);
+
         if (backBitmap == null || frontBitmap == null) {
             throw new Exception("Failed to decode captured images");
         }
@@ -336,7 +340,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
         int margin = dpToPx(16);
 
-        int left = resultBitmap.getWidth() - pipWidth - margin;
+        int left = margin;
         int top = margin;
 
         canvas.drawBitmap(resizedFrontBitmap, left, top, null);
@@ -439,6 +443,24 @@ public class DualCameraPreviewFragment extends Fragment {
 
         return rotatedBitmap;
     }
+
+    private Bitmap flipFront(Bitmap bitmap){
+        Matrix matrix = new Matrix();
+        matrix.preScale(-1, 1);
+
+        Bitmap flippedBitmap = Bitmap.createBitmap(
+                bitmap,
+                0,
+                0,
+                bitmap.getWidth(),
+                bitmap.getHeight(),
+                matrix,
+                true
+        );
+
+        return flippedBitmap;
+    }
+
     private int dpToPx(int dp) {
         return Math.round(dp * getResources().getDisplayMetrics().density);
     }
