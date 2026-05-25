@@ -36,6 +36,8 @@
     <framework src="androidx.camera:camera-video:1.5.1" />
     <framework src="io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-16kb:6.1.7"/>
     <framework src="androidx.media3:media3-transformer:1.4.1" />
+    <framework src="androidx.media3:media3-common:1.4.1" />
+    <framework src="androidx.media3:media3-effect:1.4.1" />
     </platform>
 
     <platform name="ios">
