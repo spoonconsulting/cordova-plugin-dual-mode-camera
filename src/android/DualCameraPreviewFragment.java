@@ -596,7 +596,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
             backVideoFile = backFile;
             frontVideoFile = frontFile;
-            combinedVideoFile = combinedFile;
+            combinedVideoFile = frontFile;
 
             FileOutputOptions backOutputOptions =
                     new FileOutputOptions.Builder(backFile).build();
@@ -787,15 +787,15 @@ public class DualCameraPreviewFragment extends Fragment {
                         .setRemoveAudio(true)
                         .build();
 
-        EditedMediaItemSequence backSequence =
-                EditedMediaItemSequence.withAudioAndVideoFrom(
-                        Collections.singletonList(backItem)
-                );
+       EditedMediaItemSequence backSequence =
+        new EditedMediaItemSequence.Builder(
+                Collections.singletonList(backItem)
+        ).build();
 
-        EditedMediaItemSequence frontSequence =
-                EditedMediaItemSequence.withVideoFrom(
-                        Collections.singletonList(frontItem)
-                );
+EditedMediaItemSequence frontSequence =
+        new EditedMediaItemSequence.Builder(
+                Collections.singletonList(frontItem)
+        ).build();
 
         VideoCompositorSettings pipSettings =
                 new VideoCompositorSettings() {
