@@ -1,6 +1,7 @@
 package com.spoon.dualcamera;
 
 import android.os.Bundle;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,9 +17,24 @@ import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.Preview;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.FallbackStrategy;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
+import androidx.camera.video.Recorder;
+import androidx.camera.video.Recording;
+import androidx.camera.video.VideoCapture;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Environment;
+import android.os.Handler;
+import android.util.Log;
+import androidx.camera.video.FileOutputOptions;
+import androidx.camera.video.PendingRecording;
+import androidx.camera.video.VideoRecordEvent;
+import java.io.File;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -27,14 +43,28 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.net.Uri;
-
-import java.io.File;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import androidx.exifinterface.media.ExifInterface;
 import android.graphics.Matrix;
+import androidx.annotation.OptIn;
+import androidx.annotation.OptIn;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.common.OverlaySettings;
+import androidx.media3.common.VideoCompositorSettings;
+import androidx.media3.common.util.Size;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.effect.StaticOverlaySettings;
+import androidx.media3.transformer.Composition;
+import androidx.media3.transformer.EditedMediaItem;
+import androidx.media3.transformer.EditedMediaItemSequence;
+import androidx.media3.transformer.ExportException;
+import androidx.media3.transformer.ExportResult;
+import androidx.media3.transformer.Transformer;
+import java.util.Collections;
 
 public class DualCameraPreviewFragment extends Fragment {
     private PreviewView backPreviewView;
@@ -43,9 +73,20 @@ public class DualCameraPreviewFragment extends Fragment {
     private ConcurrentCamera concurrentCamera;
     private ImageCapture backImageCapture;
     private ImageCapture frontImageCapture;
-
     private CallbackContext enableCallback;
-
+    private VideoCapture<Recorder> backVideoCapture;
+    private VideoCapture<Recorder> frontVideoCapture;
+    private Recording backRecording;
+    private Recording frontRecording;
+    private boolean activateVideo =false;
+    private File backVideoFile;
+    private File frontVideoFile;
+    private File combinedVideoFile;
+    private boolean backVideoFinalized = false;
+    private boolean frontVideoFinalized = false;
+    private boolean combineStarted = false;
+    private boolean videoResultSent = false;
+    private String videoError;
     public DualCameraPreviewFragment(CallbackContext callbackContext) {
         this.enableCallback = callbackContext;
     }
@@ -99,7 +140,6 @@ public class DualCameraPreviewFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         startCamera(enableCallback);
     }
-
 
     private void startCamera(final CallbackContext callbackContext) {
         ListenableFuture<ProcessCameraProvider> future =
@@ -192,19 +232,68 @@ public class DualCameraPreviewFragment extends Fragment {
 
             List<ConcurrentCamera.SingleCameraConfig> configs = new ArrayList<>();
 
+            if(activateVideo==true){
 
-            configs.add(new ConcurrentCamera.SingleCameraConfig(
-                    selectedBackCameraInfo.getCameraSelector(),
-                    backUseCaseGroup,
-                    this
-            ));
+                Recorder backRecorder = new Recorder.Builder()
+                        .setQualitySelector(
+                                QualitySelector.from(
+                                        Quality.HD,
+                                        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                                )
+                        )
+                        .build();
 
-            configs.add(new ConcurrentCamera.SingleCameraConfig(
-                    selectedFrontCameraInfo.getCameraSelector(),
-                    frontUseCaseGroup,
-                    this
-            ));
+                backVideoCapture = VideoCapture.withOutput(backRecorder);
 
+                Recorder frontRecorder = new Recorder.Builder()
+                        .setQualitySelector(
+                                QualitySelector.from(
+                                        Quality.HD,
+                                        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                                )
+                        )
+                        .build();
+
+                frontVideoCapture = VideoCapture.withOutput(frontRecorder);
+
+                UseCaseGroup backUseCaseGroupVideo = new UseCaseGroup.Builder()
+                        .addUseCase(backPreview)
+                        .addUseCase(backVideoCapture)
+                        .build();
+
+                UseCaseGroup frontUseCaseGroupVideo = new UseCaseGroup.Builder()
+                        .addUseCase(frontPreview)
+                        .addUseCase(frontVideoCapture)
+                        .build();
+
+
+                configs.add(new ConcurrentCamera.SingleCameraConfig(
+                        selectedBackCameraInfo.getCameraSelector(),
+                        backUseCaseGroupVideo,
+                        this
+                ));
+
+                configs.add(new ConcurrentCamera.SingleCameraConfig(
+                        selectedFrontCameraInfo.getCameraSelector(),
+                        frontUseCaseGroupVideo,
+                        this
+                ));
+
+            }else{
+
+                configs.add(new ConcurrentCamera.SingleCameraConfig(
+                        selectedBackCameraInfo.getCameraSelector(),
+                        backUseCaseGroup,
+                        this
+                ));
+
+                configs.add(new ConcurrentCamera.SingleCameraConfig(
+                        selectedFrontCameraInfo.getCameraSelector(),
+                        frontUseCaseGroup,
+                        this
+                ));
+
+            }
 
             if (configs.size() != 2) {
                 return;
@@ -465,5 +554,340 @@ public class DualCameraPreviewFragment extends Fragment {
     private int dpToPx(int dp) {
         return Math.round(dp * getResources().getDisplayMetrics().density);
     }
+
+    public void startVideoCapture(boolean recordWithAudio, int videoDurationMs) {
+        activateVideo = true;
+        resetVideoResultState();
+
+        // Re-bind camera in video mode
+        bindDualCamera();
+
+        if (backVideoCapture == null || frontVideoCapture == null) {
+            Log.e("DualCameraFragment", "Dual VideoCapture is not initialized");
+            return;
+        }
+
+        if (backRecording != null || frontRecording != null) {
+            Log.e("DualCameraFragment", "Recording already in progress");
+            return;
+        }
+
+        try {
+            File videoDir = requireContext().getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+
+            if (videoDir == null) {
+                Log.e("DualCameraFragment", "Video directory is null");
+                return;
+            }
+
+            if (!videoDir.exists()) {
+                videoDir.mkdirs();
+            }
+
+            File backFile = new File(
+                    videoDir,
+                    "back_video_" + System.currentTimeMillis() + ".mp4"
+            );
+
+            File frontFile = new File(
+                    videoDir,
+                    "front_video_" + System.currentTimeMillis() + ".mp4"
+            );
+
+            backVideoFile = backFile;
+            frontVideoFile = frontFile;
+            combinedVideoFile = combinedFile;
+
+            FileOutputOptions backOutputOptions =
+                    new FileOutputOptions.Builder(backFile).build();
+
+            FileOutputOptions frontOutputOptions =
+                    new FileOutputOptions.Builder(frontFile).build();
+
+            PendingRecording backPendingRecording =
+                    backVideoCapture.getOutput()
+                            .prepareRecording(requireContext(), backOutputOptions);
+
+            PendingRecording frontPendingRecording =
+                    frontVideoCapture.getOutput()
+                            .prepareRecording(requireContext(), frontOutputOptions);
+
+            if (recordWithAudio) {
+                if (ContextCompat.checkSelfPermission(
+                        requireContext(),
+                        Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED) {
+
+                    // Enable audio only on one recording
+                    backPendingRecording = backPendingRecording.withAudioEnabled();
+
+                } else {
+                    Log.e("DualCameraFragment", "Audio permission not granted");
+                }
+            }
+
+            backRecording = backPendingRecording.start(
+                    ContextCompat.getMainExecutor(requireContext()),
+                    videoRecordEvent -> {
+                        if (videoRecordEvent instanceof VideoRecordEvent.Start) {
+                            Log.d("DualCameraFragment", "Back recording started");
+                        }
+                        if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
+                            VideoRecordEvent.Finalize finalizeEvent =
+                                    (VideoRecordEvent.Finalize) videoRecordEvent;
+
+                            backRecording = null;
+
+                            if (finalizeEvent.hasError()) {
+                                String error = "Back recording failed: " + finalizeEvent.getError();
+                                Log.e("DualCameraFragment", error);
+                                notifyVideoError(error);
+                                return;
+                            }
+
+                            backVideoFinalized = true;
+
+                            Log.d(
+                                    "DualCameraFragment",
+                                    "Back video saved: " + backFile.getAbsolutePath()
+                            );
+
+                            combineVideosIfReady();
+                        }
+                    }
+            );
+
+
+
+            frontRecording = frontPendingRecording.start(
+                    ContextCompat.getMainExecutor(requireContext()),
+                    videoRecordEvent -> {
+                        if (videoRecordEvent instanceof VideoRecordEvent.Start) {
+                            Log.d("DualCameraFragment", "Front recording started");
+                        }
+
+                        if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
+                            VideoRecordEvent.Finalize finalizeEvent =
+                                    (VideoRecordEvent.Finalize) videoRecordEvent;
+
+                            frontRecording = null;
+
+                            if (finalizeEvent.hasError()) {
+                                String error = "Front recording failed: " + finalizeEvent.getError();
+                                Log.e("DualCameraFragment", error);
+                                notifyVideoError(error);
+                                return;
+                            }
+
+                            frontVideoFinalized = true;
+
+                            Log.d(
+                                    "DualCameraFragment",
+                                    "Front video saved: " + frontFile.getAbsolutePath()
+                            );
+
+                            combineVideosIfReady();
+                        }
+                    }
+            );
+
+            if (videoDurationMs > 0) {
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    stopVideoCapture();
+                }, videoDurationMs);
+            }
+
+        } catch (Exception e) {
+            Log.e("DualCameraFragment", "startVideoCapture error", e);
+            // stopVideoCapture();
+        }
+    }
+
+    public void stopVideoCapture() {
+        try {
+            if (backRecording != null) {
+                backRecording.stop();
+                backRecording = null;
+            }
+
+            if (frontRecording != null) {
+                frontRecording.stop();
+                frontRecording = null;
+            }
+
+            Log.d("DualCameraFragment", "Video recording stopped");
+
+        } catch (Exception e) {
+            Log.e("DualCameraFragment", "stopVideoCapture failed", e);
+        }
+    }
+
+    public interface VideoCaptureListener {
+        void onVideoSaved(String nativePath);
+        void onVideoError(String error);
+    }
+
+    private VideoCaptureListener videoCaptureListener;
+
+    public void setVideoCaptureListener(VideoCaptureListener listener) {
+        this.videoCaptureListener = listener;
+
+        if (videoError != null) {
+            notifyVideoError(videoError);
+        }
+    }
+
+    private void resetVideoResultState() {
+        backVideoFile = null;
+        frontVideoFile = null;
+        combinedVideoFile = null;
+
+        backVideoFinalized = false;
+        frontVideoFinalized = false;
+        combineStarted = false;
+        videoResultSent = false;
+        videoError = null;
+    }
+
+    private void combineVideosIfReady() {
+        if (combineStarted || videoResultSent) {
+            return;
+        }
+
+        if (!backVideoFinalized || !frontVideoFinalized) {
+            return;
+        }
+
+        if (backVideoFile == null || frontVideoFile == null || combinedVideoFile == null) {
+            notifyVideoError("Video files are missing");
+            return;
+        }
+
+        combineStarted = true;
+
+        combineFrontAndBackVideosWithMedia3(
+                backVideoFile,
+                frontVideoFile,
+                combinedVideoFile
+        );
+    }
+
+    @OptIn(markerClass = UnstableApi.class)
+    private void combineFrontAndBackVideosWithMedia3(
+            File backFile,
+            File frontFile,
+            File outputFile
+    ) {
+        EditedMediaItem backItem =
+                new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(backFile)))
+                        .build();
+
+        EditedMediaItem frontItem =
+                new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(frontFile)))
+                        .setRemoveAudio(true)
+                        .build();
+
+        EditedMediaItemSequence backSequence =
+                EditedMediaItemSequence.withAudioAndVideoFrom(
+                        Collections.singletonList(backItem)
+                );
+
+        EditedMediaItemSequence frontSequence =
+                EditedMediaItemSequence.withVideoFrom(
+                        Collections.singletonList(frontItem)
+                );
+
+        VideoCompositorSettings pipSettings =
+                new VideoCompositorSettings() {
+                    @Override
+                    public Size getOutputSize(List<Size> inputSizes) {
+                        return inputSizes.get(0);
+                    }
+
+                    @Override
+                    public OverlaySettings getOverlaySettings(
+                            int inputId,
+                            long presentationTimeUs
+                    ) {
+                        if (inputId == 0) {
+                            // Back camera full screen.
+                            return new StaticOverlaySettings.Builder().build();
+                        }
+
+                        // Front camera PiP, top-right.
+                        return new StaticOverlaySettings.Builder()
+                                .setScale(0.30f, 0.30f)
+                                .setOverlayFrameAnchor(1f, 1f)
+                                .setBackgroundFrameAnchor(0.70f, 0.70f)
+                                .build();
+                    }
+                };
+
+        Composition composition =
+                new Composition.Builder(backSequence, frontSequence)
+                        .setVideoCompositorSettings(pipSettings)
+                        .build();
+
+        Transformer transformer =
+                new Transformer.Builder(requireContext())
+                        .setVideoMimeType(MimeTypes.VIDEO_H264)
+                        .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                        .addListener(
+                                new Transformer.Listener() {
+                                    @Override
+                                    public void onCompleted(
+                                            Composition composition,
+                                            ExportResult result
+                                    ) {
+                                        String nativePath = Uri.fromFile(outputFile).toString();
+
+                                        if (backFile.exists()) {
+                                            backFile.delete();
+                                        }
+
+                                        if (frontFile.exists()) {
+                                            frontFile.delete();
+                                        }
+
+                                        requireActivity().runOnUiThread(() -> {
+                                            if (!videoResultSent && videoCaptureListener != null) {
+                                                videoResultSent = true;
+                                                videoCaptureListener.onVideoSaved(nativePath);
+                                            }
+                                        });
+                                    }
+
+                                    @Override
+                                    public void onError(
+                                            Composition composition,
+                                            ExportResult result,
+                                            ExportException exception
+                                    ) {
+                                        notifyVideoError(
+                                                exception.getMessage() != null
+                                                        ? exception.getMessage()
+                                                        : "Failed to combine videos"
+                                        );
+                                    }
+                                }
+                        )
+                        .build();
+
+        transformer.start(composition, outputFile.getAbsolutePath());
+    }
+
+    private void notifyVideoError(String error) {
+        videoError = error;
+
+        requireActivity().runOnUiThread(() -> {
+            if (!videoResultSent && videoCaptureListener != null) {
+                videoResultSent = true;
+                videoCaptureListener.onVideoError(error);
+            }
+        });
+    }
+
+
 }
+
 

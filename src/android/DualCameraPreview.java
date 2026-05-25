@@ -1,6 +1,7 @@
 package com.spoon.dualcamera;
 
 import android.app.Activity;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import androidx.core.content.ContextCompat;
@@ -11,6 +12,8 @@ import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import android.graphics.Color;
 import androidx.fragment.app.Fragment;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -21,6 +24,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 public class DualCameraPreview extends CordovaPlugin {
     private static final String FRAGMENT_TAG = "DualCameraPreviewFragment";
     private static int previewContainerId=-1;
+    private static CallbackContext videoCallbackContext;
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext){
@@ -40,6 +44,21 @@ public class DualCameraPreview extends CordovaPlugin {
 
                 case "capture":
                     capture(callbackContext);
+                    return true;
+
+                case "initVideoCallback":
+                    android.util.Log.d("DualCameraPreview", "ENTER initVideoCallback");
+                    initVideoCallback(callbackContext);
+                    return true;
+
+                case "startVideoCapture":
+                    android.util.Log.d("DualCameraPreview", "ENTER startVideoCapture");
+                    startVideoCapture(args, callbackContext);
+                    return true;
+
+                case "stopVideoCapture":
+                    android.util.Log.d("DualCameraPreview", "ENTER startVideoCapture");
+                    stopVideoCapture(callbackContext);
                     return true;
 
                 default:
@@ -217,5 +236,172 @@ public class DualCameraPreview extends CordovaPlugin {
         });
     }
 
+    private void initVideoCallback(CallbackContext callbackContext) {
+        this.videoCallbackContext = callbackContext;
+
+        try {
+            JSONObject result = new JSONObject();
+            result.put("videoCallbackInitialized", true);
+
+            PluginResult pluginResult = new PluginResult(
+                    PluginResult.Status.OK,
+                    result
+            );
+
+            // Important: keeps JS callback alive for future CameraX recording events
+            pluginResult.setKeepCallback(true);
+
+            callbackContext.sendPluginResult(pluginResult);
+
+        } catch (JSONException e) {
+            callbackContext.error(e.getMessage());
+        }
+    }
+
+    private void startVideoCapture(JSONArray args, CallbackContext callbackContext) {
+        Log.d("dual",":DDDDDDD");
+        try {
+            if (videoCallbackContext == null) {
+                callbackContext.error("Call initVideoCallback first");
+                return;
+            }
+
+            JSONObject options = args.optJSONObject(0);
+
+            boolean recordWithAudio = true;
+            int videoDurationMs = 3000;
+
+            if (options != null) {
+                recordWithAudio = options.optBoolean("recordWithAudio", true);
+                videoDurationMs = options.optInt("videoDurationMs", 3000);
+            }
+
+            final boolean finalRecordWithAudio = recordWithAudio;
+            final int finalVideoDurationMs = videoDurationMs;
+
+            cordova.getActivity().runOnUiThread(() -> {
+                try {
+                    Activity activity = cordova.getActivity();
+                    // Replace this with your actual fragment instance/name
+                    if (!(activity instanceof FragmentActivity)) {
+                        callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                        return;
+                    }
+
+                    FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                    FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+
+                    Fragment  fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                    DualCameraPreviewFragment dualCameraFragment =
+                            (DualCameraPreviewFragment) fragment;
+
+                    if (dualCameraFragment == null) {
+                        callbackContext.error("Dual camera fragment is not initialized");
+                        return;
+                    }
+
+                    // Call your CameraX fragment recording method
+                    dualCameraFragment.startVideoCapture(
+                            finalRecordWithAudio,
+                            finalVideoDurationMs
+                    );
+
+                    JSONObject result = new JSONObject();
+                    result.put("recording", true);
+
+                    PluginResult pluginResult = new PluginResult(
+                            PluginResult.Status.OK,
+                            result
+                    );
+
+                    pluginResult.setKeepCallback(true);
+
+                    videoCallbackContext.sendPluginResult(pluginResult);
+
+                } catch (Exception e) {
+                    callbackContext.error(e.getMessage());
+                }
+            });
+
+        } catch (Exception e) {
+            callbackContext.error(e.getMessage());
+        }
+    }
+
+    private void stopVideoCapture(CallbackContext callbackContext) {
+        cordova.getActivity().runOnUiThread(() -> {
+            try {
+                Activity activity = cordova.getActivity();
+                Log.d("DualCameraFragment", "stopVideoCapture");
+
+                if (!(activity instanceof FragmentActivity)) {
+                    callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                    return;
+                }
+
+                FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+
+                Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                if (!(fragment instanceof DualCameraPreviewFragment)) {
+                    callbackContext.error("Dual camera fragment is not initialized");
+                    return;
+                }
+
+                DualCameraPreviewFragment dualCameraFragment =
+                        (DualCameraPreviewFragment) fragment;
+
+                Log.d("DualCameraFragment", "dualCameraFragment found");
+
+                dualCameraFragment.setVideoCaptureListener(
+                        new DualCameraPreviewFragment.VideoCaptureListener() {
+                            @Override
+                            public void onVideoSaved(String nativePath) {
+                                try {
+                                    JSONObject result = new JSONObject();
+                                    result.put("nativePath", nativePath);
+
+                                    callbackContext.success(result);
+
+                                    if (videoCallbackContext != null) {
+                                        PluginResult pluginResult = new PluginResult(
+                                                PluginResult.Status.OK,
+                                                result
+                                        );
+                                        pluginResult.setKeepCallback(true);
+                                        videoCallbackContext.sendPluginResult(pluginResult);
+                                    }
+
+                                } catch (JSONException e) {
+                                    callbackContext.error(e.getMessage());
+                                }
+                            }
+
+                            @Override
+                            public void onVideoError(String error) {
+                                callbackContext.error(error);
+
+                                if (videoCallbackContext != null) {
+                                    PluginResult pluginResult = new PluginResult(
+                                            PluginResult.Status.ERROR,
+                                            error
+                                    );
+                                    pluginResult.setKeepCallback(true);
+                                    videoCallbackContext.sendPluginResult(pluginResult);
+                                }
+                            }
+                        }
+                );
+                dualCameraFragment.stopVideoCapture();
+
+            } catch (Throwable t) {
+                Log.e("DualCameraFragment", "stopVideoCapture plugin crash", t);
+                callbackContext.error(t.getMessage());
+            }
+        });
+    }
 }
+
 
