@@ -50,7 +50,6 @@ import java.util.UUID;
 import androidx.exifinterface.media.ExifInterface;
 import android.graphics.Matrix;
 import androidx.annotation.OptIn;
-import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.OverlaySettings;
@@ -65,6 +64,7 @@ import androidx.media3.transformer.ExportException;
 import androidx.media3.transformer.ExportResult;
 import androidx.media3.transformer.Transformer;
 import java.util.Collections;
+import android.media.MediaMetadataRetriever;
 
 public class DualCameraPreviewFragment extends Fragment {
     private PreviewView backPreviewView;
@@ -87,6 +87,7 @@ public class DualCameraPreviewFragment extends Fragment {
     private boolean combineStarted = false;
     private boolean videoResultSent = false;
     private String videoError;
+
     public DualCameraPreviewFragment(CallbackContext callbackContext) {
         this.enableCallback = callbackContext;
     }
@@ -573,7 +574,7 @@ public class DualCameraPreviewFragment extends Fragment {
         }
 
         try {
-            File videoDir = requireContext().getExternalFilesDir(Environment.DIRECTORY_MOVIES);
+            File videoDir = requireContext().getFilesDir();
 
             if (videoDir == null) {
                 Log.e("DualCameraFragment", "Video directory is null");
@@ -586,17 +587,22 @@ public class DualCameraPreviewFragment extends Fragment {
 
             File backFile = new File(
                     videoDir,
-                    "back_video_" + System.currentTimeMillis() + ".mp4"
+                    "back_video_" +  UUID.randomUUID().toString() + ".mp4"
             );
 
             File frontFile = new File(
                     videoDir,
-                    "front_video_" + System.currentTimeMillis() + ".mp4"
+                    "front_video_" +  UUID.randomUUID().toString() + ".mp4"
+            );
+
+            File combinedFile = new File(
+                    videoDir,
+                    UUID.randomUUID().toString() + ".mp4"
             );
 
             backVideoFile = backFile;
             frontVideoFile = frontFile;
-            combinedVideoFile = frontFile;
+            combinedVideoFile = combinedFile;
 
             FileOutputOptions backOutputOptions =
                     new FileOutputOptions.Builder(backFile).build();
@@ -699,7 +705,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
         } catch (Exception e) {
             Log.e("DualCameraFragment", "startVideoCapture error", e);
-            // stopVideoCapture();
+            stopVideoCapture();
         }
     }
 
@@ -723,7 +729,12 @@ public class DualCameraPreviewFragment extends Fragment {
     }
 
     public interface VideoCaptureListener {
-        void onVideoSaved(String nativePath);
+        void onVideoSaved(
+                String nativePath,
+                String thumbnailNativePath,
+                String displayName
+        );
+
         void onVideoError(String error);
     }
 
@@ -772,36 +783,69 @@ public class DualCameraPreviewFragment extends Fragment {
         );
     }
 
+    private File createVideoThumbnailFile(File videoFile) throws Exception {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+
+        try {
+            retriever.setDataSource(videoFile.getAbsolutePath());
+
+            Bitmap bitmap = retriever.getFrameAtTime(
+                    0,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+            );
+
+            if (bitmap == null) {
+                throw new Exception("Failed to create video thumbnail");
+            }
+
+            File thumbnailFile = new File(
+                    videoFile.getParentFile(),
+                    videoFile.getName().replace(".mp4", "_thumb.jpg")
+            );
+
+            OutputStream outputStream = new java.io.FileOutputStream(thumbnailFile);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+            outputStream.flush();
+            outputStream.close();
+
+            bitmap.recycle();
+
+            return thumbnailFile;
+
+        } finally {
+            retriever.release();
+        }
+    }
     @OptIn(markerClass = UnstableApi.class)
     private void combineFrontAndBackVideosWithMedia3(
             File backFile,
             File frontFile,
             File outputFile
     ) {
-        EditedMediaItem backItem =
-                new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(backFile)))
-                        .build();
-
         EditedMediaItem frontItem =
                 new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(frontFile)))
                         .setRemoveAudio(true)
                         .build();
 
-       EditedMediaItemSequence backSequence =
-        new EditedMediaItemSequence.Builder(
-                Collections.singletonList(backItem)
-        ).build();
+        EditedMediaItem backItem =
+                new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(backFile)))
+                        .build();
 
-EditedMediaItemSequence frontSequence =
-        new EditedMediaItemSequence.Builder(
-                Collections.singletonList(frontItem)
-        ).build();
+        EditedMediaItemSequence frontSequence =
+                new EditedMediaItemSequence.Builder(
+                        Collections.singletonList(frontItem)
+                ).build();
+
+        EditedMediaItemSequence backSequence =
+                new EditedMediaItemSequence.Builder(
+                        Collections.singletonList(backItem)
+                ).build();
 
         VideoCompositorSettings pipSettings =
                 new VideoCompositorSettings() {
                     @Override
                     public Size getOutputSize(List<Size> inputSizes) {
-                        return inputSizes.get(0);
+                        return inputSizes.get(1);
                     }
 
                     @Override
@@ -810,21 +854,18 @@ EditedMediaItemSequence frontSequence =
                             long presentationTimeUs
                     ) {
                         if (inputId == 0) {
-                            // Back camera full screen.
-                            return new StaticOverlaySettings.Builder().build();
+                            return new StaticOverlaySettings.Builder()
+                                    .setScale(0.30f, 0.30f)
+                                    .setOverlayFrameAnchor(0f, 0f)
+                                    .setBackgroundFrameAnchor(-0.70f, 0.70f)
+                                    .build();
                         }
-
-                        // Front camera PiP, top-right.
-                        return new StaticOverlaySettings.Builder()
-                                .setScale(0.30f, 0.30f)
-                                .setOverlayFrameAnchor(1f, 1f)
-                                .setBackgroundFrameAnchor(0.70f, 0.70f)
-                                .build();
+                        return new StaticOverlaySettings.Builder().build();
                     }
                 };
 
         Composition composition =
-                new Composition.Builder(backSequence, frontSequence)
+                new Composition.Builder(frontSequence, backSequence)
                         .setVideoCompositorSettings(pipSettings)
                         .build();
 
@@ -839,22 +880,39 @@ EditedMediaItemSequence frontSequence =
                                             Composition composition,
                                             ExportResult result
                                     ) {
-                                        String nativePath = Uri.fromFile(outputFile).toString();
+                                        try {
+                                            String nativePath = Uri.fromFile(outputFile).toString();
 
-                                        if (backFile.exists()) {
-                                            backFile.delete();
-                                        }
+                                            File thumbnailFile = createVideoThumbnailFile(outputFile);
+                                            String thumbnailNativePath = Uri.fromFile(thumbnailFile).toString();
 
-                                        if (frontFile.exists()) {
-                                            frontFile.delete();
-                                        }
+                                            requireActivity().runOnUiThread(() -> {
+                                                if (!videoResultSent && videoCaptureListener != null) {
+                                                    videoResultSent = true;
 
-                                        requireActivity().runOnUiThread(() -> {
-                                            if (!videoResultSent && videoCaptureListener != null) {
-                                                videoResultSent = true;
-                                                videoCaptureListener.onVideoSaved(nativePath);
+                                                    videoCaptureListener.onVideoSaved(
+                                                            nativePath,
+                                                            thumbnailNativePath,
+                                                            outputFile.getName()
+                                                    );
+                                                }
+                                            });
+
+                                            if (backFile.exists()) {
+                                                backFile.delete();
                                             }
-                                        });
+
+                                            if (frontFile.exists()) {
+                                                frontFile.delete();
+                                            }
+
+                                        } catch (Exception e) {
+                                            notifyVideoError(
+                                                    e.getMessage() != null
+                                                            ? e.getMessage()
+                                                            : "Failed to create video thumbnail"
+                                            );
+                                        }
                                     }
 
                                     @Override

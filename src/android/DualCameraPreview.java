@@ -237,8 +237,7 @@ public class DualCameraPreview extends CordovaPlugin {
     }
 
     private void initVideoCallback(CallbackContext callbackContext) {
-        this.videoCallbackContext = callbackContext;
-
+        videoCallbackContext = callbackContext;
         try {
             JSONObject result = new JSONObject();
             result.put("videoCallbackInitialized", true);
@@ -248,10 +247,9 @@ public class DualCameraPreview extends CordovaPlugin {
                     result
             );
 
-            // Important: keeps JS callback alive for future CameraX recording events
             pluginResult.setKeepCallback(true);
 
-            callbackContext.sendPluginResult(pluginResult);
+            videoCallbackContext.sendPluginResult(pluginResult);
 
         } catch (JSONException e) {
             callbackContext.error(e.getMessage());
@@ -259,7 +257,6 @@ public class DualCameraPreview extends CordovaPlugin {
     }
 
     private void startVideoCapture(JSONArray args, CallbackContext callbackContext) {
-        Log.d("dual",":DDDDDDD");
         try {
             if (videoCallbackContext == null) {
                 callbackContext.error("Call initVideoCallback first");
@@ -301,7 +298,6 @@ public class DualCameraPreview extends CordovaPlugin {
                         return;
                     }
 
-                    // Call your CameraX fragment recording method
                     dualCameraFragment.startVideoCapture(
                             finalRecordWithAudio,
                             finalVideoDurationMs
@@ -333,7 +329,6 @@ public class DualCameraPreview extends CordovaPlugin {
         cordova.getActivity().runOnUiThread(() -> {
             try {
                 Activity activity = cordova.getActivity();
-                Log.d("DualCameraFragment", "stopVideoCapture");
 
                 if (!(activity instanceof FragmentActivity)) {
                     callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
@@ -358,9 +353,12 @@ public class DualCameraPreview extends CordovaPlugin {
                 dualCameraFragment.setVideoCaptureListener(
                         new DualCameraPreviewFragment.VideoCaptureListener() {
                             @Override
-                            public void onVideoSaved(String nativePath) {
+                            public void onVideoSaved(String nativePath,
+                                                     String thumbnailNativePath,
+                                                     String displayName) {
                                 try {
                                     JSONObject result = new JSONObject();
+                                    result.put("thumbnail", thumbnailNativePath);
                                     result.put("nativePath", nativePath);
 
                                     callbackContext.success(result);
