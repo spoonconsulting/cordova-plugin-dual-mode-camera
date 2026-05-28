@@ -6,7 +6,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.camera.core.CameraInfo;
@@ -26,18 +25,12 @@ import androidx.camera.video.VideoCapture;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.os.Environment;
 import android.os.Handler;
-import android.util.Log;
 import androidx.camera.video.FileOutputOptions;
 import androidx.camera.video.PendingRecording;
 import androidx.camera.video.VideoRecordEvent;
 import java.io.File;
-
 import com.google.common.util.concurrent.ListenableFuture;
-
 import org.apache.cordova.CallbackContext;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -136,8 +129,7 @@ public class DualCameraPreviewFragment extends Fragment {
     }
 
     @Override
-    public void onViewCreated( @NonNull View view,@Nullable Bundle savedInstanceState
-    ) {
+    public void onViewCreated( @NonNull View view,@Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         startCamera(enableCallback);
     }
@@ -210,62 +202,48 @@ public class DualCameraPreviewFragment extends Fragment {
             Preview backPreview = new Preview.Builder().build();
             backPreview.setSurfaceProvider(backPreviewView.getSurfaceProvider());
 
-            backImageCapture = new ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .build();
+            backImageCapture = imageCapture();
 
             Preview frontPreview = new Preview.Builder().build();
             frontPreview.setSurfaceProvider(frontPreviewView.getSurfaceProvider());
 
-            frontImageCapture = new ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .build();
+            frontImageCapture = imageCapture();
 
-            UseCaseGroup backUseCaseGroup = new UseCaseGroup.Builder()
-                    .addUseCase(backPreview)
-                    .addUseCase(backImageCapture)
-                    .build();
+            UseCaseGroup backUseCaseGroup = createUseCaseGroup(
+                    backPreview,
+                    backImageCapture,
+                    activateVideo ? backVideoCapture : null
+            );
 
-            UseCaseGroup frontUseCaseGroup = new UseCaseGroup.Builder()
-                    .addUseCase(frontPreview)
-                    .addUseCase(frontImageCapture)
-                    .build();
+            UseCaseGroup frontUseCaseGroup = createUseCaseGroup(
+                    frontPreview,
+                    frontImageCapture,
+                    activateVideo ? frontVideoCapture : null
+            );
 
             List<ConcurrentCamera.SingleCameraConfig> configs = new ArrayList<>();
 
-            if(activateVideo==true){
+            if(activateVideo){
 
-                Recorder backRecorder = new Recorder.Builder()
-                        .setQualitySelector(
-                                QualitySelector.from(
-                                        Quality.HD,
-                                        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
-                                )
-                        )
-                        .build();
+                Recorder backRecorder = createRecorder();
 
                 backVideoCapture = VideoCapture.withOutput(backRecorder);
 
-                Recorder frontRecorder = new Recorder.Builder()
-                        .setQualitySelector(
-                                QualitySelector.from(
-                                        Quality.HD,
-                                        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
-                                )
-                        )
-                        .build();
+                Recorder frontRecorder = createRecorder();
 
                 frontVideoCapture = VideoCapture.withOutput(frontRecorder);
 
-                UseCaseGroup backUseCaseGroupVideo = new UseCaseGroup.Builder()
-                        .addUseCase(backPreview)
-                        .addUseCase(backVideoCapture)
-                        .build();
+                UseCaseGroup backUseCaseGroupVideo = createUseCaseGroup(
+                        backPreview,
+                        backImageCapture,
+                        activateVideo ? backVideoCapture : null
+                );
 
-                UseCaseGroup frontUseCaseGroupVideo = new UseCaseGroup.Builder()
-                        .addUseCase(frontPreview)
-                        .addUseCase(frontVideoCapture)
-                        .build();
+                UseCaseGroup frontUseCaseGroupVideo = createUseCaseGroup(
+                        frontPreview,
+                        frontImageCapture,
+                        activateVideo ? frontVideoCapture : null
+                );
 
 
                 configs.add(new ConcurrentCamera.SingleCameraConfig(
@@ -308,7 +286,35 @@ public class DualCameraPreviewFragment extends Fragment {
             concurrentCamera = null;
         }
     }
+    
+    private ImageCapture imageCapture(){
+        return new ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build();
+    }
+    private Recorder createRecorder(){
+        return new Recorder.Builder()
+                .setQualitySelector(
+                        QualitySelector.from(Quality.HD,
+                        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD))
+                )
+                .build();
+    }
+    private UseCaseGroup createUseCaseGroup(
+            Preview preview,
+            ImageCapture imageCapture,
+            @Nullable VideoCapture<Recorder> videoCapture
+    ) {
+        UseCaseGroup.Builder builder = new UseCaseGroup.Builder()
+                .addUseCase(preview)
+                .addUseCase(imageCapture);
 
+        if (videoCapture != null) {
+            builder.addUseCase(videoCapture);
+        }
+
+        return builder.build();
+    }
 
     @Override
     public void onDestroyView() {
@@ -556,30 +562,25 @@ public class DualCameraPreviewFragment extends Fragment {
         return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
-    public void startVideoCapture(boolean recordWithAudio, int videoDurationMs) {
+
+    public void startVideoCapture(int videoDurationMs, CallbackContext callbackContext) {
         activateVideo = true;
         resetVideoResultState();
 
-        // Re-bind camera in video mode
         bindDualCamera();
 
         if (backVideoCapture == null || frontVideoCapture == null) {
-            Log.e("DualCameraFragment", "Dual VideoCapture is not initialized");
+            callbackContext.error("Dual VideoCapture is not initialized");
             return;
         }
 
         if (backRecording != null || frontRecording != null) {
-            Log.e("DualCameraFragment", "Recording already in progress");
+            callbackContext.error( "Recording already in progress");
             return;
         }
 
         try {
             File videoDir = requireContext().getFilesDir();
-
-            if (videoDir == null) {
-                Log.e("DualCameraFragment", "Video directory is null");
-                return;
-            }
 
             if (!videoDir.exists()) {
                 videoDir.mkdirs();
@@ -604,112 +605,68 @@ public class DualCameraPreviewFragment extends Fragment {
             frontVideoFile = frontFile;
             combinedVideoFile = combinedFile;
 
-            FileOutputOptions backOutputOptions =
-                    new FileOutputOptions.Builder(backFile).build();
-
-            FileOutputOptions frontOutputOptions =
-                    new FileOutputOptions.Builder(frontFile).build();
-
             PendingRecording backPendingRecording =
                     backVideoCapture.getOutput()
-                            .prepareRecording(requireContext(), backOutputOptions);
+                            .prepareRecording(requireContext(), new FileOutputOptions.Builder(backFile).build());
 
             PendingRecording frontPendingRecording =
                     frontVideoCapture.getOutput()
-                            .prepareRecording(requireContext(), frontOutputOptions);
+                            .prepareRecording(requireContext(), new FileOutputOptions.Builder(frontFile).build());
 
-            if (recordWithAudio) {
-                if (ContextCompat.checkSelfPermission(
-                        requireContext(),
-                        Manifest.permission.RECORD_AUDIO
-                ) == PackageManager.PERMISSION_GRANTED) {
-
-                    // Enable audio only on one recording
-                    backPendingRecording = backPendingRecording.withAudioEnabled();
-
-                } else {
-                    Log.e("DualCameraFragment", "Audio permission not granted");
-                }
-            }
-
-            backRecording = backPendingRecording.start(
-                    ContextCompat.getMainExecutor(requireContext()),
-                    videoRecordEvent -> {
-                        if (videoRecordEvent instanceof VideoRecordEvent.Start) {
-                            Log.d("DualCameraFragment", "Back recording started");
-                        }
-                        if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
-                            VideoRecordEvent.Finalize finalizeEvent =
-                                    (VideoRecordEvent.Finalize) videoRecordEvent;
-
-                            backRecording = null;
-
-                            if (finalizeEvent.hasError()) {
-                                String error = "Back recording failed: " + finalizeEvent.getError();
-                                Log.e("DualCameraFragment", error);
-                                notifyVideoError(error);
-                                return;
-                            }
-
-                            backVideoFinalized = true;
-
-                            Log.d(
-                                    "DualCameraFragment",
-                                    "Back video saved: " + backFile.getAbsolutePath()
-                            );
-
-                            combineVideosIfReady();
-                        }
+            backRecording = startRecording(
+                    backPendingRecording,
+                    "Back",
+                    () -> {
+                        backRecording = null;
+                        backVideoFinalized = true;
                     }
             );
 
-
-
-            frontRecording = frontPendingRecording.start(
-                    ContextCompat.getMainExecutor(requireContext()),
-                    videoRecordEvent -> {
-                        if (videoRecordEvent instanceof VideoRecordEvent.Start) {
-                            Log.d("DualCameraFragment", "Front recording started");
-                        }
-
-                        if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
-                            VideoRecordEvent.Finalize finalizeEvent =
-                                    (VideoRecordEvent.Finalize) videoRecordEvent;
-
-                            frontRecording = null;
-
-                            if (finalizeEvent.hasError()) {
-                                String error = "Front recording failed: " + finalizeEvent.getError();
-                                Log.e("DualCameraFragment", error);
-                                notifyVideoError(error);
-                                return;
-                            }
-
-                            frontVideoFinalized = true;
-
-                            Log.d(
-                                    "DualCameraFragment",
-                                    "Front video saved: " + frontFile.getAbsolutePath()
-                            );
-
-                            combineVideosIfReady();
-                        }
+            frontRecording = startRecording(
+                    frontPendingRecording,
+                    "Front",
+                    () -> {
+                        frontRecording = null;
+                        frontVideoFinalized = true;
                     }
             );
 
             if (videoDurationMs > 0) {
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    stopVideoCapture();
+                    if (backRecording != null || frontRecording != null) {
+                        if (autoStopListener != null) {
+                            autoStopListener.onAutoStop();
+                        }
+                    }
                 }, videoDurationMs);
             }
 
         } catch (Exception e) {
-            Log.e("DualCameraFragment", "startVideoCapture error", e);
-            stopVideoCapture();
+            callbackContext.error("startVideoCapture error" +  e);
+            stopVideoCapture(callbackContext);
         }
     }
+    private Recording startRecording(PendingRecording pendingRecording,   String cameraName, Runnable onFinalized){
+        return pendingRecording.start(
+                ContextCompat.getMainExecutor(requireContext()),
+                videoRecordEvent -> {
+                    if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
+                        VideoRecordEvent.Finalize finalizeEvent =
+                                (VideoRecordEvent.Finalize) videoRecordEvent;
 
-    public void stopVideoCapture() {
+                        if (finalizeEvent.hasError()) {
+                            String error = cameraName +  " recording failed: " + finalizeEvent.getError();
+                            notifyVideoError(error);
+                            return;
+                        }
+                        onFinalized.run();
+                        combineVideosIfReady();
+                    }
+                }
+        );
+    }
+
+    public void stopVideoCapture(CallbackContext callbackContext) {
         try {
             if (backRecording != null) {
                 backRecording.stop();
@@ -721,25 +678,17 @@ public class DualCameraPreviewFragment extends Fragment {
                 frontRecording = null;
             }
 
-            Log.d("DualCameraFragment", "Video recording stopped");
-
         } catch (Exception e) {
-            Log.e("DualCameraFragment", "stopVideoCapture failed", e);
+            callbackContext.error("stopVideoCapture failed" + e);
         }
     }
 
     public interface VideoCaptureListener {
-        void onVideoSaved(
-                String nativePath,
-                String thumbnailNativePath,
-                String displayName
-        );
-
+        void onVideoSaved(String nativePath, String thumbnailNativePath);
         void onVideoError(String error);
     }
 
     private VideoCaptureListener videoCaptureListener;
-
     public void setVideoCaptureListener(VideoCaptureListener listener) {
         this.videoCaptureListener = listener;
 
@@ -782,7 +731,6 @@ public class DualCameraPreviewFragment extends Fragment {
                 combinedVideoFile
         );
     }
-
     private File createVideoThumbnailFile(File videoFile) throws Exception {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
 
@@ -817,11 +765,7 @@ public class DualCameraPreviewFragment extends Fragment {
         }
     }
     @OptIn(markerClass = UnstableApi.class)
-    private void combineFrontAndBackVideosWithMedia3(
-            File backFile,
-            File frontFile,
-            File outputFile
-    ) {
+    private void combineFrontAndBackVideosWithMedia3(File backFile,File frontFile,File outputFile) {
         EditedMediaItem frontItem =
                 new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(frontFile)))
                         .setRemoveAudio(true)
@@ -847,7 +791,6 @@ public class DualCameraPreviewFragment extends Fragment {
                     public Size getOutputSize(List<Size> inputSizes) {
                         return inputSizes.get(1);
                     }
-
                     @Override
                     public OverlaySettings getOverlaySettings(
                             int inputId,
@@ -892,8 +835,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
                                                     videoCaptureListener.onVideoSaved(
                                                             nativePath,
-                                                            thumbnailNativePath,
-                                                            outputFile.getName()
+                                                            thumbnailNativePath
                                                     );
                                                 }
                                             });
@@ -945,7 +887,15 @@ public class DualCameraPreviewFragment extends Fragment {
         });
     }
 
+    public interface AutoStopListener {
+        void onAutoStop();
+    }
 
+    private AutoStopListener autoStopListener;
+
+    public void setAutoStopListener(AutoStopListener listener) {
+        this.autoStopListener = listener;
+    }
 }
 
 
