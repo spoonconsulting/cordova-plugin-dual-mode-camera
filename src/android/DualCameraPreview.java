@@ -392,5 +392,3 @@ public class DualCameraPreview extends CordovaPlugin {
         });
     }
 }
-
-
