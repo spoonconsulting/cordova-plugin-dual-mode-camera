@@ -2,10 +2,10 @@ package com.spoon.dualcamera;
 
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.camera.core.CameraInfo;
@@ -14,20 +14,18 @@ import androidx.camera.core.ConcurrentCamera;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.Preview;
+import androidx.camera.core.UseCase;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
-
 import com.google.common.util.concurrent.ListenableFuture;
-
 import org.apache.cordova.CallbackContext;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.net.Uri;
-
 import java.io.File;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -35,6 +33,7 @@ import java.util.List;
 import java.util.UUID;
 import androidx.exifinterface.media.ExifInterface;
 import android.graphics.Matrix;
+import android.view.OrientationEventListener;
 
 public class DualCameraPreviewFragment extends Fragment {
     private PreviewView backPreviewView;
@@ -43,9 +42,13 @@ public class DualCameraPreviewFragment extends Fragment {
     private ConcurrentCamera concurrentCamera;
     private ImageCapture backImageCapture;
     private ImageCapture frontImageCapture;
-
     private CallbackContext enableCallback;
-
+    private static final float frontWidthRatio = 0.30f;
+    private static final float frontAspectRatio = 3f / 4f;
+    private static final int margin = 16;
+    private OrientationEventListener orientationEventListener;
+    private int currentTargetRotation = Surface.ROTATION_0;
+    
     public DualCameraPreviewFragment(CallbackContext callbackContext) {
         this.enableCallback = callbackContext;
     }
@@ -68,21 +71,45 @@ public class DualCameraPreviewFragment extends Fragment {
 
         frontPreviewView = createPreviewView();
 
-        int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        int frontWidth = Math.round(screenWidth * 0.30f);
-        int frontHeight = Math.round(frontWidth * 4f / 3f);
-
         FrameLayout.LayoutParams frontParams = new FrameLayout.LayoutParams(
-                frontWidth,
-                frontHeight
+                1,
+                1
         );
 
-        frontParams.gravity = Gravity.TOP | Gravity.LEFT;
-        frontParams.topMargin = dpToPx(16);
-        frontParams.rightMargin = dpToPx(16);
+        frontParams.gravity = Gravity.TOP | Gravity.START;
+        frontParams.topMargin = dpToPx(margin);
+        frontParams.leftMargin = dpToPx(margin);
 
         root.addView(frontPreviewView, frontParams);
 
+        root.addOnLayoutChangeListener((v, left, top, right, bottom,
+                                        oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            int height = bottom - top;
+
+            if (width <= 0 || height <= 0) {
+                return;
+            }
+
+            int oldWidth = oldRight - oldLeft;
+            int oldHeight = oldBottom - oldTop;
+
+            if (width == oldWidth && height == oldHeight) {
+                return;
+            }
+
+            int baseWidth = Math.min(width, height);
+            int frontWidth = Math.round(baseWidth * frontWidthRatio);
+            int frontHeight = Math.round(frontWidth / frontAspectRatio);
+
+            ViewGroup.LayoutParams params = frontPreviewView.getLayoutParams();
+            params.width = frontWidth;
+            params.height = frontHeight;
+
+            frontPreviewView.setLayoutParams(params);
+        });
+
+        setupOrientationListener();
         return root;
     }
 
@@ -170,6 +197,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
             backImageCapture = new ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .setTargetRotation(currentTargetRotation)
                     .build();
 
             Preview frontPreview = new Preview.Builder().build();
@@ -177,6 +205,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
             frontImageCapture = new ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .setTargetRotation(currentTargetRotation)
                     .build();
 
             UseCaseGroup backUseCaseGroup = new UseCaseGroup.Builder()
@@ -227,6 +256,11 @@ public class DualCameraPreviewFragment extends Fragment {
             cameraProvider.unbindAll();
         }
 
+        if (orientationEventListener != null) {
+            orientationEventListener.disable();
+            orientationEventListener = null;
+        }
+
         concurrentCamera = null;
         backPreviewView = null;
         frontPreviewView = null;
@@ -260,6 +294,9 @@ public class DualCameraPreviewFragment extends Fragment {
             final File finalFile = new File(
                     filesDir, UUID.randomUUID().toString() + ".jpg"
             );
+
+            backImageCapture.setTargetRotation(currentTargetRotation);
+            frontImageCapture.setTargetRotation(currentTargetRotation);
 
             captureToFile(backImageCapture, backTempFile, new CaptureFileCallback() {
                 @Override
@@ -311,6 +348,33 @@ public class DualCameraPreviewFragment extends Fragment {
 
         } catch (Exception e) {
             callbackContext.error(e.getMessage());
+        }
+    }
+
+    private void setupOrientationListener() {
+        if (orientationEventListener != null) {
+            return;
+        }
+
+        orientationEventListener = new OrientationEventListener(requireContext()) {
+            @Override
+            public void onOrientationChanged(int orientation) {
+                if (orientation == ORIENTATION_UNKNOWN) {
+                    return;
+                }
+
+                int rotation = UseCase.snapToSurfaceRotation(orientation);
+
+                if (rotation == currentTargetRotation) {
+                    return;
+                }
+
+                currentTargetRotation = rotation;
+            }
+        };
+
+        if (orientationEventListener.canDetectOrientation()) {
+            orientationEventListener.enable();
         }
     }
 

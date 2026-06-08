@@ -57,54 +57,48 @@ public class DualCameraPreview extends CordovaPlugin {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                openPreviewFragment(callbackContext);
+                if (!(activity instanceof FragmentActivity)) {
+                    callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                    return;
+                }
+
+                FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+                Fragment existing = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                if (existing != null && previewContainerId != -1) {
+                    callbackContext.success("Dual camera preview already enabled");
+                    return;
+                }
+
+                ViewGroup root = activity.findViewById(android.R.id.content);
+
+                previewContainerId = View.generateViewId();
+                FrameLayout container = new FrameLayout(activity);
+                container.setId(previewContainerId);
+
+                container.setClickable(false);
+                container.setFocusable(false);
+
+                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                );
+
+                root.addView(container, 0, params);
+
+                View cordovaWebView = webView.getView();
+                cordovaWebView.setBackgroundColor(Color.TRANSPARENT);
+
+                DualCameraPreviewFragment dualFragment = new DualCameraPreviewFragment(callbackContext);
+
+                fragmentManager.beginTransaction()
+                        .replace(previewContainerId,dualFragment,FRAGMENT_TAG)
+                        .commitAllowingStateLoss();
             }
         });
     }
-
-    private void openPreviewFragment(CallbackContext callbackContext) {
-        Activity activity = cordova.getActivity();
-
-        if (!(activity instanceof FragmentActivity)) {
-            callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
-            return;
-        }
-
-        FragmentActivity fragmentActivity = (FragmentActivity) activity;
-        FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-        Fragment existing = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
-
-        if (existing != null && previewContainerId != -1) {
-            callbackContext.success("Dual camera preview already enabled");
-            return;
-        }
-
-        ViewGroup root = activity.findViewById(android.R.id.content);
-
-        previewContainerId = View.generateViewId();
-        FrameLayout container = new FrameLayout(activity);
-        container.setId(previewContainerId);
-
-        container.setClickable(false);
-        container.setFocusable(false);
-
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        );
-
-        root.addView(container, 0, params);
-
-        View cordovaWebView = webView.getView();
-        cordovaWebView.setBackgroundColor(Color.TRANSPARENT);
-
-        DualCameraPreviewFragment dualFragment = new DualCameraPreviewFragment(callbackContext);
-
-        fragmentManager.beginTransaction()
-                .replace(previewContainerId,dualFragment,FRAGMENT_TAG)
-                .commitAllowingStateLoss();
-    }
-
+    
     private void disable(final CallbackContext callbackContext) {
         final Activity activity = cordova.getActivity();
 
