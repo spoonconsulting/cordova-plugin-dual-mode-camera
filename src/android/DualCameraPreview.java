@@ -247,11 +247,6 @@ public class DualCameraPreview extends CordovaPlugin {
 
     private void startVideoCapture(JSONArray args, CallbackContext callbackContext) {
         try {
-            if (videoCallbackContext == null) {
-                callbackContext.error("Call initVideoCallback first");
-                return;
-            }
-
             JSONObject options = args.optJSONObject(0);
 
             if (options == null) {
@@ -272,7 +267,7 @@ public class DualCameraPreview extends CordovaPlugin {
                     FragmentActivity fragmentActivity = (FragmentActivity) activity;
                     FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
 
-                    Fragment  fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+                    Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
 
                     DualCameraPreviewFragment dualCameraFragment =
                             (DualCameraPreviewFragment) fragment;
@@ -282,26 +277,82 @@ public class DualCameraPreview extends CordovaPlugin {
                         return;
                     }
 
-                    dualCameraFragment.setAutoStopListener(() -> {
-                        stopVideoCapture(callbackContext);
-                    });
-
                     dualCameraFragment.startVideoCapture(
                             videoDurationMs,
-                            callbackContext
+                            new DualCameraPreviewFragment.VideoCallback() {
+                                @Override
+                                public void onStart() {
+                                    try {
+                                        JSONObject result = new JSONObject();
+                                        result.put("recording", true);
+
+                                        PluginResult pluginResult = new PluginResult(
+                                                PluginResult.Status.OK,
+                                                result
+                                        );
+
+                                        pluginResult.setKeepCallback(true); // need to verify
+                                        videoCallbackContext.sendPluginResult(pluginResult);
+
+                                    } catch (JSONException e) {
+                                        videoCallbackContext.error(e.getMessage());
+                                    }
+                                }
+
+                                @Override
+                                public void onProcessing() {
+                                    try {
+                                        JSONObject result = new JSONObject();
+                                        result.put("processing", true);
+
+                                        PluginResult pluginResult = new PluginResult(
+                                                PluginResult.Status.OK,
+                                                result
+                                        );
+
+                                        pluginResult.setKeepCallback(true);
+                                        videoCallbackContext.sendPluginResult(pluginResult);
+
+                                    } catch (JSONException e) {
+                                        videoCallbackContext.error(e.getMessage());
+                                    }
+                                }
+
+                                @Override
+                                public void onStop(String nativePath, String thumbnailNativePath) {
+                                    try {
+
+                                        JSONObject result = new JSONObject();
+                                        result.put("recording", false);
+                                        result.put("processed", true);
+                                        result.put("thumbnail", thumbnailNativePath);
+                                        result.put("nativePath", nativePath);
+
+                                        PluginResult pluginResult = new PluginResult(
+                                                PluginResult.Status.OK,
+                                                result
+                                        );
+
+                                        pluginResult.setKeepCallback(true);
+                                        videoCallbackContext.sendPluginResult(pluginResult);
+
+                                    } catch (JSONException e) {
+                                        videoCallbackContext.error(e.getMessage());
+                                    }
+                                }
+
+                                @Override
+                                public void onError(String error) {
+                                    PluginResult pluginResult = new PluginResult(
+                                            PluginResult.Status.ERROR,
+                                            error
+                                    );
+
+                                    pluginResult.setKeepCallback(true);
+                                    videoCallbackContext.sendPluginResult(pluginResult);
+                                }
+                            }
                     );
-
-                    JSONObject result = new JSONObject();
-                    result.put("recording", true);
-
-                    PluginResult pluginResult = new PluginResult(
-                            PluginResult.Status.OK,
-                            result
-                    );
-
-                    pluginResult.setKeepCallback(true);
-
-                    videoCallbackContext.sendPluginResult(pluginResult);
 
                 } catch (Exception e) {
                     callbackContext.error(e.getMessage());
@@ -336,49 +387,8 @@ public class DualCameraPreview extends CordovaPlugin {
                 DualCameraPreviewFragment dualCameraFragment =
                         (DualCameraPreviewFragment) fragment;
 
-                dualCameraFragment.setVideoCaptureListener(
-                        new DualCameraPreviewFragment.VideoCaptureListener() {
-                            @Override
-                            public void onVideoSaved(String nativePath,
-                                                     String thumbnailNativePath){
-                                try {
-                                    JSONObject result = new JSONObject();
-                                    result.put("recording", false);
-                                    result.put("thumbnail", thumbnailNativePath);
-                                    result.put("nativePath", nativePath);
-
-                                    callbackContext.success(result);
-
-                                    if (videoCallbackContext != null) {
-                                        PluginResult pluginResult = new PluginResult(
-                                                PluginResult.Status.OK,
-                                                result
-                                        );
-                                        pluginResult.setKeepCallback(true);
-                                        videoCallbackContext.sendPluginResult(pluginResult);
-                                    }
-
-                                } catch (JSONException e) {
-                                    callbackContext.error(e.getMessage());
-                                }
-                            }
-
-                            @Override
-                            public void onVideoError(String error) {
-                                callbackContext.error(error);
-
-                                if (videoCallbackContext != null) {
-                                    PluginResult pluginResult = new PluginResult(
-                                            PluginResult.Status.ERROR,
-                                            error
-                                    );
-                                    pluginResult.setKeepCallback(true);
-                                    videoCallbackContext.sendPluginResult(pluginResult);
-                                }
-                            }
-                        }
-                );
-                dualCameraFragment.stopVideoCapture(callbackContext);
+                dualCameraFragment.stopVideoCapture();
+                callbackContext.success();
 
             } catch (Throwable t) {
                 callbackContext.error(t.getMessage());
