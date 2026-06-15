@@ -1,6 +1,5 @@
 package com.spoon.dualcamera;
 
-import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.view.Surface;
@@ -37,6 +36,8 @@ import androidx.camera.video.Quality;
 import androidx.camera.video.QualitySelector;
 import androidx.camera.video.Recorder;
 import androidx.camera.video.VideoCapture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class DualCameraPreviewFragment extends Fragment {
     private ProcessCameraProvider cameraProvider;
@@ -48,6 +49,7 @@ public class DualCameraPreviewFragment extends Fragment {
     private int currentTargetRotation = Surface.ROTATION_0;
     private PreviewView previewView;
     private VideoCapture<Recorder> videoCapture;
+    private ExecutorService captureExecutor;
 
     public DualCameraPreviewFragment(CallbackContext callbackContext) {
         this.enableCallback = callbackContext;
@@ -69,6 +71,7 @@ public class DualCameraPreviewFragment extends Fragment {
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
+        captureExecutor = Executors.newSingleThreadExecutor();
         setupOrientationListener();
         return root;
     }
@@ -81,8 +84,7 @@ public class DualCameraPreviewFragment extends Fragment {
     }
 
     @Override
-    public void onViewCreated( @NonNull View view,@Nullable Bundle savedInstanceState
-    ) {
+    public void onViewCreated( @NonNull View view,@Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         startCamera(enableCallback);
     }
@@ -256,6 +258,7 @@ public class DualCameraPreviewFragment extends Fragment {
         concurrentCamera = null;
         previewView = null;
         videoCapture = null;
+        captureExecutor= null;
     }
 
     public void capture(final CallbackContext callbackContext) {
@@ -278,42 +281,43 @@ public class DualCameraPreviewFragment extends Fragment {
                     return;
                 }
 
-                final Bitmap finalBitmap = rotateBitmapIfNeeded(bitmap);
+                Bitmap finalBitmap = rotateBitmapIfNeeded(bitmap);
 
-                final File finalFile = new File(
+                File finalFile = new File(
                         requireContext().getFilesDir(),
                         UUID.randomUUID().toString() + ".jpg"
                 );
 
-                new Thread(() -> {
-                    try {
-                        OutputStream outputStream =
-                                new java.io.FileOutputStream(finalFile);
-
-                        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream);
-                        outputStream.flush();
-                        outputStream.close();
-
-                        finalBitmap.recycle();
-
-                        final String imageNativePath =
-                                Uri.fromFile(finalFile).toString();
-
-                        requireActivity().runOnUiThread(() ->
-                                callbackContext.success(imageNativePath)
-                        );
-
-                    } catch (Exception e) {
-                        bitmap.recycle();
-
-                        requireActivity().runOnUiThread(() ->
-                                callbackContext.error(e.getMessage())
-                        );
-                    }
-                }).start();
+                saveBitmapAsync(finalBitmap, finalFile, callbackContext);
 
             } catch (Exception e) {
                 callbackContext.error(e.getMessage());
+            }
+        });
+    }
+
+    private void saveBitmapAsync(final Bitmap bitmap, final File file, final CallbackContext callbackContext) {
+        captureExecutor.execute(() -> {
+            try {
+                try (OutputStream outputStream = new java.io.FileOutputStream(file)) {
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, outputStream);
+                    outputStream.flush();
+                }
+
+                bitmap.recycle();
+
+                final String imageNativePath = Uri.fromFile(file).toString();
+
+                requireActivity().runOnUiThread(() ->
+                        callbackContext.success(imageNativePath)
+                );
+
+            } catch (Exception e) {
+                bitmap.recycle();
+
+                requireActivity().runOnUiThread(() ->
+                        callbackContext.error(e.getMessage())
+                );
             }
         });
     }
