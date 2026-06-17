@@ -113,7 +113,7 @@ public class DualCameraPreview extends CordovaPlugin {
             }
         });
     }
-    
+
     private void disable(final CallbackContext callbackContext) {
         final Activity activity = cordova.getActivity();
 
@@ -291,25 +291,6 @@ public class DualCameraPreview extends CordovaPlugin {
                                                 result
                                         );
 
-                                        pluginResult.setKeepCallback(true); // need to verify
-                                        videoCallbackContext.sendPluginResult(pluginResult);
-
-                                    } catch (JSONException e) {
-                                        videoCallbackContext.error(e.getMessage());
-                                    }
-                                }
-
-                                @Override
-                                public void onProcessing() {
-                                    try {
-                                        JSONObject result = new JSONObject();
-                                        result.put("processing", true);
-
-                                        PluginResult pluginResult = new PluginResult(
-                                                PluginResult.Status.OK,
-                                                result
-                                        );
-
                                         pluginResult.setKeepCallback(true);
                                         videoCallbackContext.sendPluginResult(pluginResult);
 
@@ -324,7 +305,6 @@ public class DualCameraPreview extends CordovaPlugin {
 
                                         JSONObject result = new JSONObject();
                                         result.put("recording", false);
-                                        result.put("processed", true);
                                         result.put("thumbnail", thumbnailNativePath);
                                         result.put("nativePath", nativePath);
 
