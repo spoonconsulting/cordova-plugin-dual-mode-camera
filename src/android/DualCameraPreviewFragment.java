@@ -91,7 +91,7 @@ public class DualCameraPreviewFragment extends Fragment {
 
     private PreviewView createPreviewView(){
         PreviewView previewView = new PreviewView(requireContext());
-        previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        previewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         return previewView;
     }
