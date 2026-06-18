@@ -178,52 +178,52 @@ class DualCameraSessionManager: NSObject, AVCaptureVideoDataOutputSampleBufferDe
     }
     
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        
-        if !self.isMixerReady && !self.isRecording && output == backOutput {
-            if let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
-                self.isMixerReady = true
-                prepareMixer(with: formatDesc)
-            }
+        if output == backOutput || output == frontOutput {
+            delegate?.sessionManager(self, didOutput: sampleBuffer, from: output)
         }
-        
-        if let videoRecorder = self.videoRecorder, self.isRecording {
-            if output == backOutput {
-                self.latestBackBuffer = sampleBuffer
-            } else if output == frontOutput {
-                self.latestFrontBuffer = sampleBuffer
-            } else if output == audioOutput {
+
+        if output == audioOutput {
+            if let videoRecorder = self.videoRecorder, self.isRecording {
                 videoRecorder.appendAudioBuffer(sampleBuffer)
-                return
             }
+            return
+        }
 
-            if self.videoMixer.inputFormatDescription == nil,
-               let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
-                prepareMixer(with: formatDesc)
-                return
-            }
+        guard let videoRecorder = self.videoRecorder, self.isRecording else { return }
 
-            guard let front = latestFrontBuffer, let back = latestBackBuffer else { return }
+        if output == backOutput {
+            latestBackBuffer = sampleBuffer
+        } else if output == frontOutput {
+            latestFrontBuffer = sampleBuffer
+        }
 
-            guard let frontBuffer = CMSampleBufferGetImageBuffer(front),
-                  let backBuffer = CMSampleBufferGetImageBuffer(back) else { return }
+        if videoMixer.inputFormatDescription == nil,
+        let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
+            prepareMixer(with: formatDesc)
+            return
+        }
 
-            if let merged = self.videoMixer.mix(fullScreenPixelBuffer: backBuffer, pipPixelBuffer: frontBuffer, fullScreenPixelBufferIsFrontCamera: false) {
-                let backPts = CMSampleBufferGetPresentationTimeStamp(back)
-                videoRecorder.appendVideoPixelBuffer(merged, withPresentationTime: backPts)
-                
-                if !self.hasAppendedFirstFrame {
-                    self.hasAppendedFirstFrame = true
-                    if let firstFrameHandler = self.onFirstVideoFrame {
-                        self.onFirstVideoFrame = nil
-                        DispatchQueue.main.async { firstFrameHandler() }
-                    }
+        guard let front = latestFrontBuffer, let back = latestBackBuffer else { return }
+        
+        guard let frontBuffer = CMSampleBufferGetImageBuffer(front),
+              let backBuffer = CMSampleBufferGetImageBuffer(back) else { return }
+
+        if let merged = self.videoMixer.mix(fullScreenPixelBuffer: backBuffer, pipPixelBuffer: frontBuffer, fullScreenPixelBufferIsFrontCamera: false) {
+            let backPts = CMSampleBufferGetPresentationTimeStamp(back)
+            videoRecorder.appendVideoPixelBuffer(merged, withPresentationTime: backPts)
+            
+            if !self.hasAppendedFirstFrame {
+                self.hasAppendedFirstFrame = true
+                if let firstFrameHandler = self.onFirstVideoFrame {
+                    self.onFirstVideoFrame = nil
+                    DispatchQueue.main.async { firstFrameHandler() }
                 }
-                
-                latestFrontBuffer = nil
-                latestBackBuffer = nil
-            } else {
             }
+            
+            latestFrontBuffer = nil
+            latestBackBuffer = nil
+        } else {
+            print("Failed to mix video frames")
         }
 
         delegate?.sessionManager(self, didOutput: sampleBuffer, from: output)
