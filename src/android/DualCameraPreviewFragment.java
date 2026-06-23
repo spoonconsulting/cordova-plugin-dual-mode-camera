@@ -38,6 +38,7 @@ import androidx.camera.video.Recorder;
 import androidx.camera.video.VideoCapture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import android.graphics.Matrix;
 
 public class DualCameraPreviewFragment extends Fragment {
     private ProcessCameraProvider cameraProvider;
@@ -50,6 +51,7 @@ public class DualCameraPreviewFragment extends Fragment {
     private PreviewView previewView;
     private VideoCapture<Recorder> videoCapture;
     private ExecutorService captureExecutor;
+    private Preview preview;
 
     public DualCameraPreviewFragment(CallbackContext callbackContext) {
         this.enableCallback = callbackContext;
@@ -76,39 +78,40 @@ public class DualCameraPreviewFragment extends Fragment {
         return root;
     }
 
-    private PreviewView createPreviewView(){
+    private PreviewView createPreviewView() {
         PreviewView previewView = new PreviewView(requireContext());
-        previewView.setScaleType(PreviewView.ScaleType.FILL_CENTER);
+        previewView.setScaleType(PreviewView.ScaleType.FIT_CENTER);
         previewView.setImplementationMode(PreviewView.ImplementationMode.COMPATIBLE);
         return previewView;
     }
 
     @Override
-    public void onViewCreated( @NonNull View view,@Nullable Bundle savedInstanceState) {
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        startCamera(enableCallback);
+
+        previewView.post(() -> {
+            if (previewView.getDisplay() != null) {
+                currentTargetRotation = previewView.getDisplay().getRotation();
+            }
+
+            startCamera(enableCallback);
+        });
     }
 
     private void startCamera(final CallbackContext callbackContext) {
         ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(requireContext());
 
-        future.addListener(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    cameraProvider = future.get();
-                    bindDualCamera();  //bind the front and back cameras
-                    if (callbackContext != null) {
-                        callbackContext.success();
-                    }
-                } catch (Exception e) {
-                    if (callbackContext != null) {
-                        callbackContext.error(e.getMessage());
-                    }
-
+        future.addListener(() -> {
+            try {
+                cameraProvider = future.get();
+            } catch (Exception e) {
+                if (callbackContext != null) {
+                    callbackContext.error(e.getMessage());
                 }
+                return;
             }
+            bindDualCamera(callbackContext);  //bind the front and back cameras
         }, ContextCompat.getMainExecutor(requireContext()));
     }
 
@@ -123,123 +126,156 @@ public class DualCameraPreviewFragment extends Fragment {
                 .build();
     }
 
-    private void bindDualCamera() {
+    private void bindDualCamera(CallbackContext callbackContext) {
+        if (cameraProvider == null) {
+            return;
+        }
+
+        cameraProvider.unbindAll();
+
+        DualCameraInfo cameras = findFrontBackConcurrentCameras(
+                cameraProvider.getAvailableConcurrentCameraInfos()
+        );
+
+        if (cameras == null) {
+            if (callbackContext != null) {
+                callbackContext.error("Front/back concurrent camera is not available");
+            }
+            return;
+        }
+
+        UseCaseGroup useCaseGroup = createDualCameraUseCaseGroup();
+
+        List<ConcurrentCamera.SingleCameraConfig> configs =
+                createDualCameraConfigs(cameras, useCaseGroup);
+
         try {
-            cameraProvider.unbindAll();
-
-            List<List<CameraInfo>> cameraCombinations =
-                    cameraProvider.getAvailableConcurrentCameraInfos();
-
-            CameraInfo selectedFrontCameraInfo = null;
-            CameraInfo selectedBackCameraInfo = null;
-
-            for (List<CameraInfo> combination : cameraCombinations) {
-                CameraInfo frontInThisCombination = null;
-                CameraInfo backInThisCombination = null;
-
-                for (CameraInfo cameraInfo : combination) {
-                    Integer lensFacing = cameraInfo.getLensFacing();
-
-                    if (lensFacing == null) {
-                        continue;
-                    }
-
-                    switch (lensFacing) {
-                        case CameraSelector.LENS_FACING_FRONT:
-                            frontInThisCombination = cameraInfo;
-                            break;
-                        case CameraSelector.LENS_FACING_BACK:
-                            backInThisCombination = cameraInfo;
-                            break;
-                    }
-                }
-
-                if (frontInThisCombination != null && backInThisCombination != null) {
-                    selectedFrontCameraInfo = frontInThisCombination;
-                    selectedBackCameraInfo = backInThisCombination;
-                    break;
-                }
-            }
-
-            if (selectedFrontCameraInfo == null || selectedBackCameraInfo == null) {
-                throw new IllegalStateException(
-                        "Front/back concurrent camera is not available"
-                );
-            }
-
-            ResolutionSelector resolutionSelector =
-                    new ResolutionSelector.Builder()
-                            .setAspectRatioStrategy(
-                                    AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
-                            )
-                            .build();
-
-            Preview preview  =
-                    new Preview.Builder()
-                            .setResolutionSelector(resolutionSelector)
-                            .setTargetRotation(currentTargetRotation)
-                            .build();
-
-            preview.setSurfaceProvider(previewView.getSurfaceProvider());
-
-            videoCapture =
-                    new VideoCapture.Builder<>(createRecorder())
-                            .setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
-                            .build();
-
-            videoCapture.setTargetRotation(currentTargetRotation);
-
-            UseCaseGroup useCaseGroup =
-                    new UseCaseGroup.Builder()
-                            .addUseCase(preview)
-                            .addUseCase(videoCapture)
-                            .build();
-
-            CompositionSettings backFullScreen =
-                    new CompositionSettings.Builder()
-                            .setAlpha(1.0f)
-                            .setOffset(0.0f, 0.0f)
-                            .setScale(1.0f, 1.0f)
-                            .build();
-
-            float pipScale = frontWidthRatio;
-
-            CompositionSettings frontPip =
-                    new CompositionSettings.Builder()
-                            .setAlpha(1.0f)
-                            .setOffset(
-                                    -1.0f + pipScale + frontMarginNdc,
-                                    1.0f - pipScale - frontMarginNdc
-                            )
-                            .setScale(pipScale, pipScale)
-                            .build();
-
-            List<ConcurrentCamera.SingleCameraConfig> configs = new ArrayList<>();
-
-            configs.add(new ConcurrentCamera.SingleCameraConfig(
-                            selectedBackCameraInfo.getCameraSelector(),
-                            useCaseGroup,
-                            backFullScreen,
-                            this
-                    ));
-
-            configs.add(new ConcurrentCamera.SingleCameraConfig(
-                            selectedFrontCameraInfo.getCameraSelector(),
-                            useCaseGroup,
-                            frontPip,
-                            this
-                    ));
-
             concurrentCamera = cameraProvider.bindToLifecycle(configs);
 
-        } catch (Exception e) {
+            if (callbackContext != null) {
+                callbackContext.success();
+            }
+
+        } catch (RuntimeException e) {
             videoCapture = null;
             concurrentCamera = null;
 
-            if (enableCallback != null) {
-                enableCallback.error(e.getMessage());
+            if (callbackContext != null) {
+                callbackContext.error(e.getMessage());
+            }
+
+        }
+
+    }
+
+    private static class DualCameraInfo {
+        final CameraInfo frontCameraInfo;
+        final CameraInfo backCameraInfo;
+
+        DualCameraInfo(CameraInfo frontCameraInfo, CameraInfo backCameraInfo) {
+            this.frontCameraInfo = frontCameraInfo;
+            this.backCameraInfo = backCameraInfo;
+        }
+    }
+
+    private DualCameraInfo findFrontBackConcurrentCameras(
+            List<List<CameraInfo>> cameraCombinations
+    ) {
+        for (List<CameraInfo> combination : cameraCombinations) {
+            CameraInfo frontCamera = null;
+            CameraInfo backCamera = null;
+
+            for (CameraInfo cameraInfo : combination) {
+                Integer lensFacing = cameraInfo.getLensFacing();
+
+                if (lensFacing == null) {
+                    continue;
+                }
+
+                if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
+                    frontCamera = cameraInfo;
+                } else if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                    backCamera = cameraInfo;
+                }
+            }
+
+            if (frontCamera != null && backCamera != null) {
+                return new DualCameraInfo(frontCamera, backCamera);
             }
         }
+
+        return null;
+    }
+
+    private List<ConcurrentCamera.SingleCameraConfig> createDualCameraConfigs(
+            DualCameraInfo cameras,
+            UseCaseGroup useCaseGroup
+    ) {
+        List<ConcurrentCamera.SingleCameraConfig> configs = new ArrayList<>();
+
+        configs.add(new ConcurrentCamera.SingleCameraConfig(
+                cameras.backCameraInfo.getCameraSelector(),
+                useCaseGroup,
+                createBackFullScreenComposition(),
+                this
+        ));
+
+        configs.add(new ConcurrentCamera.SingleCameraConfig(
+                cameras.frontCameraInfo.getCameraSelector(),
+                useCaseGroup,
+                createFrontPipComposition(),
+                this
+        ));
+
+        return configs;
+    }
+
+    private CompositionSettings createBackFullScreenComposition() {
+        return new CompositionSettings.Builder()
+                .setAlpha(1.0f)
+                .setOffset(0.0f, 0.0f)
+                .setScale(1.0f, 1.0f)
+                .build();
+    }
+    private CompositionSettings createFrontPipComposition() {
+        float pipScale = frontWidthRatio;
+
+        return new CompositionSettings.Builder()
+                .setAlpha(1.0f)
+                .setOffset(
+                        -1.0f + pipScale + frontMarginNdc,
+                        1.0f - pipScale - frontMarginNdc
+                )
+                .setScale(pipScale, pipScale)
+                .build();
+    }
+    private UseCaseGroup createDualCameraUseCaseGroup() {
+        ResolutionSelector resolutionSelector =
+                new ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(
+                                AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
+                        )
+                        .build();
+
+        preview =
+                new Preview.Builder()
+                        .setResolutionSelector(resolutionSelector)
+                        .setTargetRotation(getPreviewDisplayRotation())
+                        .build();
+
+        preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+        videoCapture =
+                new VideoCapture.Builder<>(createRecorder())
+                        .setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
+                        .build();
+
+        videoCapture.setTargetRotation(currentTargetRotation);
+
+        return new UseCaseGroup.Builder()
+                .addUseCase(preview)
+                .addUseCase(videoCapture)
+                .build();
     }
 
     @Override
@@ -258,8 +294,20 @@ public class DualCameraPreviewFragment extends Fragment {
         concurrentCamera = null;
         previewView = null;
         videoCapture = null;
-        captureExecutor= null;
+
+        if (captureExecutor != null) {
+            captureExecutor.shutdown();
+        }
     }
+
+    private int getPreviewDisplayRotation() {
+        if (previewView != null && previewView.getDisplay() != null) {
+            return previewView.getDisplay().getRotation();
+        }
+
+        return Surface.ROTATION_0;
+    }
+
 
     public void capture(final CallbackContext callbackContext) {
         if (!isAdded() || getContext() == null) {
@@ -281,7 +329,7 @@ public class DualCameraPreviewFragment extends Fragment {
                     return;
                 }
 
-                Bitmap finalBitmap = rotateBitmapIfNeeded(bitmap);
+                Bitmap finalBitmap = rotateBitmapForFinalImage(bitmap);
 
                 File finalFile = new File(
                         requireContext().getFilesDir(),
@@ -334,7 +382,13 @@ public class DualCameraPreviewFragment extends Fragment {
                     return;
                 }
 
-                currentTargetRotation = UseCase.snapToSurfaceRotation(orientation);
+                int newRotation = UseCase.snapToSurfaceRotation(orientation);
+
+                if (newRotation == currentTargetRotation) {
+                    return;
+                }
+
+                currentTargetRotation = newRotation;
 
                 if (videoCapture != null) {
                     videoCapture.setTargetRotation(currentTargetRotation);
@@ -347,24 +401,25 @@ public class DualCameraPreviewFragment extends Fragment {
         }
     }
 
-    private Bitmap rotateBitmapIfNeeded(Bitmap bitmap) {
-        if (currentTargetRotation == Surface.ROTATION_90) {
-            return rotateBitmap(bitmap, 270);
-        }
+    private Bitmap rotateBitmapForFinalImage(Bitmap bitmap) {
+        switch (currentTargetRotation) {
+            case Surface.ROTATION_90:
+                return rotateBitmap(bitmap, 270);
 
-        if (currentTargetRotation == Surface.ROTATION_270) {
-            return rotateBitmap(bitmap, 90);
-        }
+            case Surface.ROTATION_270:
+                return rotateBitmap(bitmap, 90);
 
-        if (currentTargetRotation == Surface.ROTATION_180) {
-            return rotateBitmap(bitmap, 180);
-        }
+            case Surface.ROTATION_180:
+                return rotateBitmap(bitmap, 180);
 
-        return bitmap;
+            case Surface.ROTATION_0:
+            default:
+                return bitmap;
+        }
     }
 
     private Bitmap rotateBitmap(Bitmap bitmap, float degrees) {
-        android.graphics.Matrix matrix = new android.graphics.Matrix();
+        Matrix matrix = new Matrix();
         matrix.postRotate(degrees);
 
         Bitmap rotatedBitmap = Bitmap.createBitmap(
