@@ -1,3 +1,6 @@
+## [1.0.5](https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/compare/1.0.4...1.0.5) (2026-06-18)
+* **iOS:** Improve capture performance
+
 ## [1.0.4](https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/compare/1.0.3...1.0.4) (2026-03-11)
 * **iOS:** Fix camera preview opaque background
 
