@@ -69,9 +69,7 @@ public class DualCameraPreview extends CordovaPlugin {
 
     private void enable(final CallbackContext callbackContext) {
         Activity activity = cordova.getActivity();
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
+        activity.runOnUiThread(() -> {
                 if (!(activity instanceof FragmentActivity)) {
                     callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
                     return;
@@ -79,9 +77,9 @@ public class DualCameraPreview extends CordovaPlugin {
 
                 FragmentActivity fragmentActivity = (FragmentActivity) activity;
                 FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-                Fragment existing = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+                Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
 
-                if (existing != null && previewContainerId != -1) {
+                if (fragment != null && previewContainerId != -1) {
                     callbackContext.success("Dual camera preview already enabled");
                     return;
                 }
@@ -111,50 +109,47 @@ public class DualCameraPreview extends CordovaPlugin {
                         .replace(previewContainerId,dualFragment,FRAGMENT_TAG)
                         .commitAllowingStateLoss();
             }
-        });
+        );
     }
 
     private void disable(final CallbackContext callbackContext) {
         final Activity activity = cordova.getActivity();
 
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    if (!(activity instanceof FragmentActivity)) {
-                        callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
-                        return;
-                    }
-
-                    FragmentActivity fragmentActivity = (FragmentActivity) activity;
-                    FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-
-                    Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
-
-                    if (fragment != null) {
-                        fragmentManager.beginTransaction()
-                                .remove(fragment)
-                                .commitAllowingStateLoss();
-                    }
-
-                    if (previewContainerId != -1) {
-                        View container = activity.findViewById(previewContainerId);
-
-                        if (container != null && container.getParent()!=null ) {
-                            ((ViewGroup) container.getParent()).removeView(container);
-                        }
-
-                        previewContainerId = -1;
-
-                    }
-
-                    callbackContext.sendPluginResult(
-                            new PluginResult(PluginResult.Status.OK, true)
-                    );
-
-                } catch (Exception e) {
-                    callbackContext.error(e.getMessage());
+        activity.runOnUiThread(() -> {
+            try {
+                if (!(activity instanceof FragmentActivity)) {
+                    callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                    return;
                 }
+
+                FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+
+                Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                if (fragment != null) {
+                    fragmentManager.beginTransaction()
+                            .remove(fragment)
+                            .commitAllowingStateLoss();
+                }
+
+                if (previewContainerId != -1) {
+                    View container = activity.findViewById(previewContainerId);
+
+                    if (container != null && container.getParent() != null) {
+                        ((ViewGroup) container.getParent()).removeView(container);
+                    }
+
+                    previewContainerId = -1;
+
+                }
+
+                callbackContext.sendPluginResult(
+                        new PluginResult(PluginResult.Status.OK, true)
+                );
+
+            } catch (Exception e) {
+                callbackContext.error(e.getMessage());
             }
         });
     }
@@ -164,9 +159,7 @@ public class DualCameraPreview extends CordovaPlugin {
         final  ListenableFuture<ProcessCameraProvider> future =
                 ProcessCameraProvider.getInstance(activity);
 
-        future.addListener(new Runnable() {
-            @Override
-            public void run() {
+        future.addListener(() -> {
                 try {
                     ProcessCameraProvider cameraProvider = future.get();
 
@@ -184,44 +177,40 @@ public class DualCameraPreview extends CordovaPlugin {
                 } catch (Exception e) {
                     callbackContext.error(e.getMessage());
                 }
-            }
-        }, ContextCompat.getMainExecutor(activity));
+            }, ContextCompat.getMainExecutor(activity));
     }
 
     private void capture(final CallbackContext callbackContext) {
         final Activity activity = cordova.getActivity();
 
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    if (!(activity instanceof FragmentActivity)) {
-                        callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
-                        return;
-                    }
-
-                    FragmentActivity fragmentActivity = (FragmentActivity) activity;
-                    FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-                    Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
-
-                    if (fragment == null) {
-                        callbackContext.error("Dual camera preview is not enabled");
-                        return;
-                    }
-
-                    if (!(fragment instanceof DualCameraPreviewFragment)) {
-                        callbackContext.error("Invalid dual camera fragment");
-                        return;
-                    }
-
-                    DualCameraPreviewFragment cameraFragment =
-                            (DualCameraPreviewFragment) fragment;
-
-                    cameraFragment.capture(callbackContext);
-
-                } catch (Exception e) {
-                    callbackContext.error(e.getMessage());
+        activity.runOnUiThread(() -> {
+            try {
+                if (!(activity instanceof FragmentActivity)) {
+                    callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                    return;
                 }
+
+                FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+                Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                if (fragment == null) {
+                    callbackContext.error("Dual camera preview is not enabled");
+                    return;
+                }
+
+                if (!(fragment instanceof DualCameraPreviewFragment)) {
+                    callbackContext.error("Invalid dual camera fragment");
+                    return;
+                }
+
+                DualCameraPreviewFragment cameraFragment =
+                        (DualCameraPreviewFragment) fragment;
+
+                cameraFragment.capture(callbackContext);
+
+            } catch (Exception e) {
+                callbackContext.error(e.getMessage());
             }
         });
     }
