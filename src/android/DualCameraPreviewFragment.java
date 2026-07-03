@@ -45,7 +45,7 @@ public class DualCameraPreviewFragment extends Fragment {
     private ConcurrentCamera concurrentCamera;
     private CallbackContext enableCallback;
     private static final float frontWidthRatio = 0.30f;
-    private static final float frontMarginNdc = 0.15f;
+    private static final float frontMarginNdc = 0.10f;
     private OrientationEventListener orientationEventListener;
     private int currentTargetRotation = Surface.ROTATION_0;
     private PreviewView previewView;
@@ -243,8 +243,8 @@ public class DualCameraPreviewFragment extends Fragment {
         return new CompositionSettings.Builder()
                 .setAlpha(1.0f)
                 .setOffset(
-                        -1.0f + pipScale + frontMarginNdc,
-                        1.0f - pipScale - frontMarginNdc
+                        -1.0f + pipScale + frontMarginNdc ,
+                        1.0f - pipScale - 0.05f
                 )
                 .setScale(pipScale, pipScale)
                 .build();
