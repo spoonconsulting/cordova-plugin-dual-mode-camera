@@ -35,6 +35,7 @@ import CoreLocation
 
         webView.isOpaque = false
         webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
 
