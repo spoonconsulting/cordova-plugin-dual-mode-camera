@@ -1,3 +1,6 @@
+## [1.0.7](https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/compare/1.0.6...1.0.7) (2026-07-08)
+* **Android:** Add dual camera capture and recording
+
 ## [1.0.6](https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/compare/1.0.5...1.0.6) (2026-07-06)
 * **iOS:** Clear WKWebView scroll view background
 
