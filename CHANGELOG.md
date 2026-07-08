@@ -1,3 +1,6 @@
+## [1.0.6](https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/compare/1.0.5...1.0.6) (2026-07-06)
+* **iOS:** Clear WKWebView scroll view background
+
 ## [1.0.5](https://github.com/spoonconsulting/cordova-plugin-dual-mode-camera/compare/1.0.4...1.0.5) (2026-06-18)
 * **iOS:** Improve capture performance
 
