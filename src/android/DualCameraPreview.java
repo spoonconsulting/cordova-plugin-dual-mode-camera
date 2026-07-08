@@ -11,6 +11,8 @@ import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import android.graphics.Color;
 import androidx.fragment.app.Fragment;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -21,6 +23,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 public class DualCameraPreview extends CordovaPlugin {
     private static final String FRAGMENT_TAG = "DualCameraPreviewFragment";
     private static int previewContainerId=-1;
+    private static CallbackContext videoCallbackContext;
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext){
@@ -40,6 +43,18 @@ public class DualCameraPreview extends CordovaPlugin {
 
                 case "capture":
                     capture(callbackContext);
+                    return true;
+
+                case "initVideoCallback":
+                    initVideoCallback(callbackContext);
+                    return true;
+
+                case "startVideoCapture":
+                    startVideoCapture(args, callbackContext);
+                    return true;
+
+                case "stopVideoCapture":
+                    stopVideoCapture(callbackContext);
                     return true;
 
                 default:
@@ -96,7 +111,7 @@ public class DualCameraPreview extends CordovaPlugin {
             }
         );
     }
-    
+
     private void disable(final CallbackContext callbackContext) {
         final Activity activity = cordova.getActivity();
 
@@ -200,5 +215,153 @@ public class DualCameraPreview extends CordovaPlugin {
         });
     }
 
-}
+    private void initVideoCallback(CallbackContext callbackContext) {
+        videoCallbackContext = callbackContext;
+        try {
+            JSONObject result = new JSONObject();
+            result.put("videoCallbackInitialized", true);
 
+            PluginResult pluginResult = new PluginResult(
+                    PluginResult.Status.OK,
+                    result
+            );
+
+            pluginResult.setKeepCallback(true);
+            videoCallbackContext.sendPluginResult(pluginResult);
+
+        } catch (JSONException e) {
+            callbackContext.error(e.getMessage());
+        }
+    }
+
+    private void startVideoCapture(JSONArray args, CallbackContext callbackContext) {
+        try {
+            JSONObject options = args.optJSONObject(0);
+
+            if (options == null) {
+                throw new IllegalArgumentException("Options are required");
+            }
+
+            int videoDurationMs = options.optInt("videoDurationMs", 3000);
+
+            cordova.getActivity().runOnUiThread(() -> {
+                try {
+                    Activity activity = cordova.getActivity();
+
+                    if (!(activity instanceof FragmentActivity)) {
+                        callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                        return;
+                    }
+
+                    FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                    FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+
+                    Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                    DualCameraPreviewFragment dualCameraFragment =
+                            (DualCameraPreviewFragment) fragment;
+
+                    if (dualCameraFragment == null) {
+                        callbackContext.error("Dual camera fragment is not initialized");
+                        return;
+                    }
+
+                    dualCameraFragment.startVideoCapture(
+                            videoDurationMs,
+                            new DualCameraPreviewFragment.VideoCallback() {
+                                @Override
+                                public void onStart() {
+                                    try {
+                                        JSONObject result = new JSONObject();
+                                        result.put("recording", true);
+
+                                        PluginResult pluginResult = new PluginResult(
+                                                PluginResult.Status.OK,
+                                                result
+                                        );
+
+                                        pluginResult.setKeepCallback(true);
+                                        videoCallbackContext.sendPluginResult(pluginResult);
+
+                                    } catch (JSONException e) {
+                                        videoCallbackContext.error(e.getMessage());
+                                    }
+                                }
+
+                                @Override
+                                public void onStop(String nativePath, String thumbnailNativePath) {
+                                    try {
+
+                                        JSONObject result = new JSONObject();
+                                        result.put("recording", false);
+                                        result.put("thumbnail", thumbnailNativePath);
+                                        result.put("nativePath", nativePath);
+
+                                        PluginResult pluginResult = new PluginResult(
+                                                PluginResult.Status.OK,
+                                                result
+                                        );
+
+                                        pluginResult.setKeepCallback(true);
+                                        videoCallbackContext.sendPluginResult(pluginResult);
+
+                                    } catch (JSONException e) {
+                                        videoCallbackContext.error(e.getMessage());
+                                    }
+                                }
+
+                                @Override
+                                public void onError(String error) {
+                                    PluginResult pluginResult = new PluginResult(
+                                            PluginResult.Status.ERROR,
+                                            error
+                                    );
+
+                                    pluginResult.setKeepCallback(true);
+                                    videoCallbackContext.sendPluginResult(pluginResult);
+                                }
+                            }
+                    );
+
+                } catch (Exception e) {
+                    callbackContext.error(e.getMessage());
+                }
+            });
+
+        } catch (Exception e) {
+            callbackContext.error(e.getMessage());
+        }
+    }
+
+    private void stopVideoCapture(CallbackContext callbackContext) {
+        cordova.getActivity().runOnUiThread(() -> {
+            try {
+                Activity activity = cordova.getActivity();
+
+                if (!(activity instanceof FragmentActivity)) {
+                    callbackContext.error("MainActivity must extend FragmentActivity or AppCompatActivity");
+                    return;
+                }
+
+                FragmentActivity fragmentActivity = (FragmentActivity) activity;
+                FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
+
+                Fragment fragment = fragmentManager.findFragmentByTag(FRAGMENT_TAG);
+
+                if (!(fragment instanceof DualCameraPreviewFragment)) {
+                    callbackContext.error("Dual camera fragment is not initialized");
+                    return;
+                }
+
+                DualCameraPreviewFragment dualCameraFragment =
+                        (DualCameraPreviewFragment) fragment;
+
+                dualCameraFragment.stopVideoCapture();
+                callbackContext.success();
+
+            } catch (Throwable t) {
+                callbackContext.error(t.getMessage());
+            }
+        });
+    }
+}
