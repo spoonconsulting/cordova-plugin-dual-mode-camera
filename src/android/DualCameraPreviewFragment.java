@@ -1,7 +1,10 @@
 package com.spoon.dualcamera;
 
 import android.graphics.Bitmap;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Looper;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
@@ -15,27 +18,33 @@ import androidx.camera.core.Preview;
 import androidx.camera.core.UseCase;
 import androidx.camera.core.UseCaseGroup;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.FallbackStrategy;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
+import androidx.camera.video.Recorder;
+import androidx.camera.video.Recording;
+import androidx.camera.video.VideoCapture;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+import android.os.Handler;
+import androidx.camera.video.FileOutputOptions;
+import androidx.camera.video.PendingRecording;
+import androidx.camera.video.VideoRecordEvent;
+import java.io.File;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.cordova.CallbackContext;
 import android.net.Uri;
-import java.io.File;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import android.media.MediaMetadataRetriever;
 import android.view.OrientationEventListener;
 import androidx.camera.core.CompositionSettings;
 import androidx.camera.core.resolutionselector.AspectRatioStrategy;
 import androidx.camera.core.resolutionselector.ResolutionSelector;
 import androidx.camera.core.MirrorMode;
-import androidx.camera.video.FallbackStrategy;
-import androidx.camera.video.Quality;
-import androidx.camera.video.QualitySelector;
-import androidx.camera.video.Recorder;
-import androidx.camera.video.VideoCapture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import android.graphics.Matrix;
@@ -51,7 +60,11 @@ public class DualCameraPreviewFragment extends Fragment {
     private PreviewView previewView;
     private VideoCapture<Recorder> videoCapture;
     private ExecutorService captureExecutor;
-    private Preview preview;
+    private Recording activeRecording;
+    private boolean videoResultSent = false;
+    private boolean stopRequested = false;
+    private VideoCallback videoCallback;
+        private Preview preview;
 
     public DualCameraPreviewFragment(CallbackContext callbackContext) {
         this.enableCallback = callbackContext;
@@ -439,4 +452,166 @@ public class DualCameraPreviewFragment extends Fragment {
         return rotatedBitmap;
     }
 
+    public void startVideoCapture(int videoDurationMs, VideoCallback callback) {
+        this.videoCallback = callback;
+        this.videoResultSent = false;
+        this.stopRequested = false;
+
+        if (videoCapture == null) {
+            notifyVideoError("VideoCapture is not initialized");
+            return;
+        }
+
+        if (activeRecording != null) {
+            notifyVideoError("Recording already in progress");
+            return;
+        }
+
+        try {
+            File videoDir = requireContext().getFilesDir();
+
+            if (!videoDir.exists()) {
+                videoDir.mkdirs();
+            }
+
+            File recordingFile = new File(
+                    videoDir,
+                    UUID.randomUUID().toString() + ".mp4"
+            );
+
+            boolean hasAudioPermission =
+                    ContextCompat.checkSelfPermission(
+                            requireContext(),
+                            Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED;
+
+            PendingRecording pendingRecording =
+                    videoCapture.getOutput()
+                            .prepareRecording(
+                                    requireContext(),
+                                    new FileOutputOptions.Builder(recordingFile).build()
+                            );
+
+            if (hasAudioPermission) {
+                pendingRecording = pendingRecording.withAudioEnabled();
+            }
+
+            activeRecording = pendingRecording.start(
+                    ContextCompat.getMainExecutor(requireContext()),
+                    videoRecordEvent -> {
+                        if (videoRecordEvent instanceof VideoRecordEvent.Start) {
+                            if (!videoResultSent && videoCallback != null) {
+                                videoCallback.onStart();
+                            }
+                            return;
+                        }
+
+                        if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
+                            VideoRecordEvent.Finalize finalizeEvent =
+                                    (VideoRecordEvent.Finalize) videoRecordEvent;
+
+                            activeRecording = null;
+                            stopRequested = false; //
+
+                            if (finalizeEvent.hasError()) {
+                                notifyVideoError("Recording failed: " + finalizeEvent.getError());
+                                return;
+                            }
+
+                            try {
+                                File thumbnailFile = createVideoThumbnailFile(recordingFile);
+
+                                String videoNativePath = Uri.fromFile(recordingFile).toString();
+                                String thumbnailNativePath = Uri.fromFile(thumbnailFile).toString();
+
+                                if (!videoResultSent && videoCallback != null) {
+                                    videoResultSent = true;
+                                    videoCallback.onStop(videoNativePath, thumbnailNativePath);
+                                }
+
+                            } catch (Exception e) {
+                                notifyVideoError("Failed to create video thumbnail: " + e.getMessage());
+                            }
+                        }
+                    }
+            );
+
+            if (videoDurationMs > 0) {
+                final Recording recordingToStop = activeRecording;
+
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (activeRecording == recordingToStop && !stopRequested) {
+                        stopVideoCapture();
+                    }
+                }, videoDurationMs);
+            }
+
+        } catch (Exception e) {
+            notifyVideoError("startVideoCapture error: " + e.getMessage());
+            stopVideoCapture();
+        }
+    }
+
+    public void stopVideoCapture() {
+        try {
+            if (activeRecording == null || stopRequested) {
+                return;
+            }
+
+            stopRequested = true;
+            activeRecording.stop();
+
+        } catch (Exception e) {
+            notifyVideoError("stopVideoCapture failed: " + e.getMessage());
+        }
+    }
+
+    public interface VideoCallback {
+        void onStart();
+        void onStop(String nativePath, String thumbnailNativePath);
+        void onError(String error);
+    }
+
+    private File createVideoThumbnailFile(File videoFile) throws Exception {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+
+        try {
+            retriever.setDataSource(videoFile.getAbsolutePath());
+
+            Bitmap bitmap = retriever.getFrameAtTime(
+                    0,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+            );
+
+            if (bitmap == null) {
+                throw new Exception("Failed to create video thumbnail");
+            }
+
+            File thumbnailFile = new File(
+                    videoFile.getParentFile(),
+                    videoFile.getName().replace(".mp4", "_thumb.jpg")
+            );
+
+            OutputStream outputStream = new java.io.FileOutputStream(thumbnailFile);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+            outputStream.flush();
+            outputStream.close();
+
+            bitmap.recycle();
+
+            return thumbnailFile;
+
+        } finally {
+            retriever.release();
+        }
+    }
+
+    private void notifyVideoError(String error) {
+        requireActivity().runOnUiThread(() -> {
+            if (!videoResultSent && videoCallback != null) {
+                videoResultSent = true;
+                videoCallback.onError(error);
+            }
+        });
+    }
 }
